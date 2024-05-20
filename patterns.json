@@ -1,0 +1,30 @@
+[
+  {
+    "pattern": "https?://(?:www\\.)?(?:twitter\\.com|x\\.com)/([^/]+)/status/(\\d+)(?:/photo/\\d)?",
+    "replacement": "[Twitter](https://fxtwitter.com/$1/status/$2)"
+  },
+  {
+    "pattern": "https?://(?:www\\.)?instagram\\.com/reel/([a-zA-Z0-9_-]+)(/\\?igshid=[a-zA-Z0-9_-]+)?",
+    "replacement": "[Instagram](https://ddinstagram.com/reel/$1$2)"
+  },
+  {
+    "pattern": "https://(?:www\\.)?instagram\\.com/p/([a-zA-Z0-9_-]+)(/\\?utm_source=ig_web_copy_link)?",
+    "replacement": "[Instagram](https://ddinstagram.com/p/$1)"
+  },
+  {
+    "pattern": "https://(?:www\\.|vm\\.)?tiktok\\.com/@([^/]+)/video/(\\d+)",
+    "replacement": "[TikTok](https://vxtiktok.com/@$1/video/$2)"
+  },
+  {
+    "pattern": "https://vm\\.tiktok\\.com/([A-Za-z0-9]+)",
+    "replacement": "[TikTok](https://vm.vxtiktok.com/$1)"
+  },
+  {
+    "pattern": "https://(?:www\\.)?pixiv\\.net/(?:en/)?(?:artworks|member_illust)/(\\d+)",
+    "replacement": "[Pixiv](https://phixiv.net/artworks/$1)"
+  },
+  {
+    "pattern": "https?://(?:www\\.)?(reddit\\.com)/(.*)",
+    "replacement": "[Reddit](https://rxddit.com/$2)"
+  }
+]
