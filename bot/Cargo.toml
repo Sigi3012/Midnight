@@ -1,0 +1,15 @@
+[package]
+name = "bot"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+backend.workspace = true
+
+dotenv.workspace = true
+env_logger.workspace = true
+log.workspace = true
+
+poise.workspace = true
+tokio.workspace = true
+
