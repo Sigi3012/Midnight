@@ -11,3 +11,7 @@ fancy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 lazy_static.workspace = true
+reqwest.workspace = true
+rand.workspace = true
+serde-xml-rs.workspace = true
+thiserror.workspace = true

@@ -27,7 +27,7 @@ async fn main() {
         | serenity::GatewayIntents::GUILD_MESSAGES;
 
     let framework_options = poise::FrameworkOptions {
-        commands: vec![commands::age::age(), commands::register::sync()],
+        commands: vec![commands::register::sync(), commands::yuri::yuri()],
         event_handler: |ctx, event, framework, data| {
             Box::pin(events::listener(ctx, event, framework, data))
         },
