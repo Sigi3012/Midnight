@@ -1,5 +1,5 @@
 use fancy_regex::Regex;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use serde::Deserialize;
 use std::fs;
 
@@ -54,14 +54,14 @@ fn build_all() -> Result<Vec<(Regex, String)>, Box<dyn std::error::Error>> {
         }
     };
 
+    info!("Built {} patterns successfully", patterns.len());
+
     Ok(patterns)
 }
 
 pub async fn fix_links(
     message: &poise::serenity_prelude::Message,
 ) -> Result<Option<String>, fancy_regex::Error> {
-    debug!("{}", &message.content);
-
     let mut result = message.content.clone();
     // Check if a message contains a link within patterns.json patterns
     for p in BUILT_PATTERNS.iter() {
