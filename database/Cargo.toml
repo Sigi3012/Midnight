@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+deadpool-postgres.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+once_cell.workspace = true
+refinery.workspace = true
+thiserror.workspace = true
+tokio-postgres.workspace = true
+tokio.workspace = true

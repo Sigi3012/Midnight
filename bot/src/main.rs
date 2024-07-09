@@ -1,3 +1,5 @@
+use common::context::set_context_wrapper;
+use database::core::initialize_database;
 use dotenv;
 use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
@@ -5,6 +7,7 @@ use std::process::exit;
 
 mod commands;
 mod events;
+mod tasks;
 
 pub struct Data {} // User data, which is stored and accessible in all command invocations
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -22,12 +25,28 @@ async fn main() {
 
     info!("Logger and enviroment variables initalised");
 
+    match initialize_database().await {
+        Ok(_) => info!("Database initalized"),
+        Err(e) => {
+            error!(
+                "Fatal! Something went wrong initalizing the database, {}",
+                e
+            );
+            return;
+        }
+    }
+
     let intents = serenity::GatewayIntents::non_privileged()
         | serenity::GatewayIntents::MESSAGE_CONTENT
         | serenity::GatewayIntents::GUILD_MESSAGES;
 
     let framework_options = poise::FrameworkOptions {
-        commands: vec![commands::register::sync(), commands::yuri::yuri()],
+        commands: vec![
+            commands::register::sync(),
+            commands::yuri::yuri(),
+            commands::mapfeed::mapfeed(),
+        ],
+
         event_handler: |ctx, event, framework, data| {
             Box::pin(events::listener(ctx, event, framework, data))
         },
@@ -41,7 +60,14 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(framework_options)
-        .setup(move |_ctx, _ready, _framework| Box::pin(async move { Ok(Data {}) }))
+        .setup(move |ctx, _ready, _framework| {
+            Box::pin(async move {
+                tasks::init_tasks().await;
+                set_context_wrapper(ctx.shard.clone(), ctx.http.clone(), ctx.cache.clone());
+
+                Ok(Data {})
+            })
+        })
         .build();
 
     let mut client: serenity::Client = serenity::ClientBuilder::new(token, intents)

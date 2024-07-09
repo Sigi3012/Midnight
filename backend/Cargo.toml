@@ -4,14 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log.workspace = true
+database.workspace = true
+common.workspace = true
 
-poise.workspace = true
+chrono.workspace = true
 fancy-regex.workspace = true
+futures.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+poise.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+serde-xml-rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-lazy_static.workspace = true
-reqwest.workspace = true
-rand.workspace = true
-serde-xml-rs.workspace = true
+serenity.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
