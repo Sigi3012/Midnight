@@ -1,0 +1,29 @@
+version: "1"
+services:
+  bot:
+    image: sigi3012/midnight:latest
+    environment:
+      - DISCORD_TOKEN=
+      - OSU_API_CLIENT_ID=
+      - OSU_API_SECRET=
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=
+      - POSTGRES_HOST=db
+      - RUST_LOG=bot=info,backend=info,database=info
+    restart: unless-stopped
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15.2-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: change_me
+    ports:
+      - "5432:5432"
+    volumes:
+      - midnight_pg_data:/var/lib/postgresql/data
+
+volumes:
+  midnight_pg_data:
+    driver: local
