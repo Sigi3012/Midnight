@@ -29,7 +29,7 @@ use tokio::{
 };
 
 const FIFTEEN_MINUTES: Duration = Duration::from_secs(60 * 15);
-const BUTTON_TIMEOUT: Duration = Duration::from_secs(60 * 30);
+const BUTTON_TIMEOUT: Duration = Duration::from_secs(60 * 120);
 
 pub struct MapfeedManager {
     stop_flag: Arc<AtomicBool>,
