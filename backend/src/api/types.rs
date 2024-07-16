@@ -1,3 +1,4 @@
+/// Types only for the api module
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer};
 use std::fmt::Display;

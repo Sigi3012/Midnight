@@ -1,17 +1,21 @@
-use crate::api::{
-    osu::{fetch_all_qualified_maps, fetch_beatmaps},
-    types::{BeatmapStatus, Beatmapset, Modes},
+use crate::{
+    api::{
+        osu::{fetch_all_qualified_maps, fetch_beatmaps},
+        types::{BeatmapStatus, Beatmapset, Modes},
+    },
+    types::SubscriptionError,
 };
-use ::serenity::all::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use common::{context::get_context_wrapper, math::mode};
 use database::mapfeed::{
     delete_beatmap, fetch_all_ids, fetch_all_subscribed_channels, fetch_all_subscribers,
     insert_beatmap, insert_beatmaps, subscribe_to_beatmap, unsubscribe_from_beatmap,
 };
+use fancy_regex::Regex;
 use log::{debug, error, info, warn};
-use poise::serenity_prelude as serenity;
+use poise::{serenity_prelude as serenity, CreateReply};
 use serenity::{
-    builder::{CreateEmbed, CreateMessage},
+    all::{CreateInteractionResponse, CreateInteractionResponseMessage},
+    builder::{CreateEmbed, CreateEmbedFooter, CreateMessage},
     futures::StreamExt,
     model::{colour::Colour, id::ChannelId},
 };
@@ -49,6 +53,11 @@ struct ButtonInteraction {
 enum ButtonState {
     Subscribe,
     Unsubscribe,
+}
+
+lazy_static! {
+    #[derive(Debug)]
+    static ref OSU_LINK_REGEX: Regex = Regex::new(r#"(?:https:\/\/osu\.ppy\.sh/beatmapsets/)(\d+)"#).unwrap();
 }
 
 impl MapfeedManager {
@@ -455,4 +464,63 @@ pub async fn populate() -> Result<(), Box<dyn std::error::Error>> {
         insert_beatmaps(ids).await?;
     };
     Ok(())
+}
+
+pub async fn subscription_handler(subscriber: i64, link: String) -> Result<(), SubscriptionError> {
+    if OSU_LINK_REGEX.is_match(&link)? == false {
+        return Err(SubscriptionError::InvalidLink);
+    }
+    debug!("{:?}", OSU_LINK_REGEX.captures(&link)?);
+    let id = match OSU_LINK_REGEX.captures(&link)? {
+        Some(capture) => match capture.get(1) {
+            Some(id) => id.as_str().parse::<i32>()?,
+            None => return Err(SubscriptionError::NonCapture),
+        },
+        None => return Err(SubscriptionError::InvalidLink),
+    };
+
+    subscribe_to_beatmap(subscriber, id).await?;
+    Ok(())
+}
+
+pub async fn unsubscription_handler(
+    subscriber: i64,
+    link: String,
+) -> Result<(), SubscriptionError> {
+    if OSU_LINK_REGEX.is_match(&link)? == false {
+        return Err(SubscriptionError::InvalidLink);
+    }
+    debug!("{:?}", OSU_LINK_REGEX.captures(&link)?);
+    let id = match OSU_LINK_REGEX.captures(&link)? {
+        Some(capture) => match capture.get(1) {
+            Some(id) => id.as_str().parse::<i32>()?,
+            None => return Err(SubscriptionError::NonCapture),
+        },
+        None => return Err(SubscriptionError::InvalidLink),
+    };
+
+    unsubscribe_from_beatmap(subscriber, id).await?;
+    Ok(())
+}
+
+pub fn create_reply_with_sorted_beatmaps(beatmaps: Vec<Beatmapset>) -> CreateReply {
+    let mut sorted_beatmaps = beatmaps;
+    sorted_beatmaps.sort_by(|a, b| a.ranked_date_unix.cmp(&b.ranked_date_unix));
+
+    CreateReply::default().ephemeral(true).embed(
+        CreateEmbed::default()
+            .title("Beatmaps you are subscribed to")
+            .color(Colour::new(0x6758b8))
+            .description(format!(
+                "- {}",
+                sorted_beatmaps
+                    .iter()
+                    .map(|b| format!("[{}](https://osu.ppy.sh/beatmapsets/{})", b.title, b.id))
+                    .collect::<Vec<String>>()
+                    .join("\n- ")
+            ))
+            .footer(CreateEmbedFooter::new(
+                "Sorted closest to being ranked to furthest",
+            )),
+    )
 }

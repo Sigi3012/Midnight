@@ -1,5 +1,5 @@
 use crate::core::{get_client_from_pool, DatabaseError};
-use log::{debug, info, warn};
+use log::{debug, warn};
 use tokio_postgres::types::{FromSql, Type};
 
 const INSERTION_QUERY: &str = r#"
@@ -26,12 +26,16 @@ const SELECT_ALL_SUBSCRIBERS_QUERY: &str = r#"
     SELECT subscribed_user_ids FROM beatmapsets WHERE beatmapset_id = $1
 "#;
 
+const SELECT_ALL_SUBSCRIBED_FOR_USER_ID: &str = r#"
+    SELECT beatmapset_id FROM beatmapsets WHERE $1 = ANY(subscribed_user_ids)
+"#;
+
 const SUBSCRIBE_CHANNEL_TO_MAPFEED_QUERY: &str = r#"
     INSERT INTO subscribed_channels (channel_id) VALUES ($1) ON CONFLICT DO NOTHING
 "#;
 
 const UNSUBSCRIBE_CHANNEL_FROM_MAPFEED_QUERY: &str = r#"
-    DELETE FROM subscribed_channels WHERE channelId = $1
+    DELETE FROM subscribed_channels WHERE channel_id = $1
 "#;
 
 const SELECT_ALL_CHANNEL_SUBSCRIBERS_QUERY: &str = r#"
@@ -182,6 +186,27 @@ pub async fn fetch_all_subscribers(primary_key: i32) -> Result<Option<Vec<i64>>,
     }
 }
 
+pub async fn fetch_all_subscribed_beatmaps_for_id(
+    user_id: i64,
+) -> Result<Option<Vec<i32>>, DatabaseError> {
+    let client = get_client_from_pool().await?;
+    let stmt = client
+        .prepare_cached(SELECT_ALL_SUBSCRIBED_FOR_USER_ID)
+        .await?;
+
+    let rows = client.query(&stmt, &[&user_id]).await?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    let return_vec: Vec<i32> = rows
+        .iter()
+        .map(|r| r.try_get("beatmapset_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Some(return_vec))
+}
+
 pub async fn subscribe_channel_to_mapfeed(channel_id: i64) -> Result<(), DatabaseError> {
     let client = get_client_from_pool().await?;
     let stmt = client
@@ -193,10 +218,7 @@ pub async fn subscribe_channel_to_mapfeed(channel_id: i64) -> Result<(), Databas
             "Channel id {} is already subscribed to the mapfeed",
             channel_id
         ),
-        _ => info!(
-            "Channel id {} has successfully been subscribed to the mapfeed",
-            channel_id
-        ),
+        _ => (),
     };
 
     Ok(())
@@ -209,11 +231,6 @@ pub async fn unsubscribe_channel_from_mapfeed(channel_id: i64) -> Result<(), Dat
         .await?;
 
     client.execute(&stmt, &[&channel_id]).await?;
-
-    info!(
-        "Channel id {} has successfully been unsubscribed to the mapfeed",
-        channel_id
-    );
 
     Ok(())
 }
