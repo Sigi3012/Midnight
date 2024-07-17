@@ -13,6 +13,7 @@ struct LoadedJson {
     replacement: String,
 }
 
+#[derive(Debug)]
 struct BuiltPattern {
     pattern: Regex,
     replacement: String,
@@ -65,7 +66,7 @@ pub async fn fix_links(
     let mut result = message.content.clone();
     // Check if a message contains a link within the loaded patterns
     for built in BUILT_PATTERNS.iter() {
-        if built.pattern.is_match(&message.content)? == true {
+        if built.pattern.is_match(&message.content)? {
             result = built
                 .pattern
                 .replace_all(&result, &built.replacement)
