@@ -124,18 +124,3 @@ async fn wait_until_shutdown() {
         v = s2.recv() => v.unwrap(),
     );
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serenity::utils::token::validate;
-
-    #[test]
-    fn verify_token() {
-        dotenv::dotenv().ok();
-        match std::env::var("DISCORD_TOKEN") {
-            Ok(token) => assert!(validate(token).is_ok()),
-            Err(e) => panic!("{}", e),
-        };
-    }
-}

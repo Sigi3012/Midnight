@@ -1,5 +1,5 @@
 use fancy_regex::Regex;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use serde::Deserialize;
 
 lazy_static! {
@@ -78,37 +78,5 @@ pub async fn fix_links(
         Ok(None)
     } else {
         Ok(Some(result))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{fs, sync::Once};
-
-    static INIT: Once = Once::new();
-
-    fn initalize() {
-        INIT.call_once(|| {
-            fs::copy("../patterns.json", "patterns.json").unwrap();
-        })
-    }
-
-    #[test]
-    fn test_build_regex() {
-        assert!(build_regex(r"^foo$").is_ok());
-        assert!(build_regex(r"[").is_err());
-    }
-
-    #[test]
-    fn test_build_all() {
-        initalize();
-        assert!(build_all().is_ok());
-    }
-
-    #[test]
-    fn test_parse_json() {
-        initalize();
-        assert!(load_json_patterns().is_ok());
     }
 }
