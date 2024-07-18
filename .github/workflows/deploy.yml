@@ -1,0 +1,31 @@
+name: Deploy docker image
+
+on:
+  workflow_run:
+    workflows:
+      - "Build and push docker image"
+    branches:
+      - "master"
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: AWS SSM
+        uses: peterkimzz/aws-ssm-send-command@v1.1.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+          instance-ids: ${{ vars.AWS_INSTANCE_ID }}
+
+          working-directory: /home/ubuntu/Midnight
+          command: |
+            sudo docker compose down
+            sudo docker compose pull
+            sudo docker compose up -d
+
+          comment: Executed by Github Actions

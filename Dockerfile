@@ -28,5 +28,4 @@ FROM alpine:3 AS runtime
 RUN apk update && apk add --no-cache pkgconfig libgcc
 WORKDIR /midnight
 COPY --from=builder /midnight/target/release/bot .
-COPY --from=builder /midnight/patterns.json .
 ENTRYPOINT ["/midnight/bot"]
