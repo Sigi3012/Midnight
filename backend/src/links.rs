@@ -1,6 +1,16 @@
+use ::serenity::all::{
+    model::channel::MessageFlags, ChannelId, CreateInteractionResponseMessage, CreateMessage,
+    EditMessage,
+};
+use common::context::get_context_wrapper;
 use fancy_regex::Regex;
-use log::{debug, error, info};
+use futures::StreamExt;
+use log::{debug, error, info, warn};
+use poise::serenity_prelude as serenity;
 use serde::Deserialize;
+use tokio::time::Duration;
+
+const BUTTON_TIMEOUT: Duration = Duration::from_secs(60);
 
 lazy_static! {
     #[derive(Debug)]
@@ -80,6 +90,77 @@ pub async fn fix_links(
     } else {
         Ok(Some(result))
     }
+}
+
+pub async fn message_handler(
+    message_content: String,
+    message_owner: u64,
+    channel_target: ChannelId,
+    reply_target: &serenity::Message,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = get_context_wrapper();
+    let components = serenity::CreateActionRow::Buttons(vec![serenity::CreateButton::new(
+        format!("{}", message_owner),
+    )
+    .emoji(serenity::ReactionType::Unicode("\u{1F5D1}".to_string()))
+    .style(serenity::ButtonStyle::Danger)]);
+    let builder = CreateMessage::new()
+        .content(format!("<@{}>: {}", message_owner, message_content))
+        .components(vec![components])
+        .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
+        .reference_message(reply_target);
+
+    let mut message = channel_target.send_message(ctx, builder).await?;
+
+    tokio::spawn(async move {
+        let mut interaction_stream = message
+            .await_component_interactions(&ctx.shard)
+            .timeout(BUTTON_TIMEOUT)
+            .stream();
+
+        // Becomes none at the end of the timeout and continues
+        while let Some(interaction) = interaction_stream.next().await {
+            if interaction.user.id.get() == interaction.data.custom_id.parse::<u64>().unwrap() {
+                if let Err(why) = interaction.message.delete(&ctx).await {
+                    error!("Failed to delete message from interaction, {}", why)
+                };
+            } else {
+                warn!("{} cannot press this button", interaction.user.name);
+                match interaction
+                    .create_response(
+                        &ctx,
+                        serenity::CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::default()
+                                .content("You are not the owner of this message!")
+                                .ephemeral(true),
+                        ),
+                    )
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(e) => error!("Interaction failure, {}", e),
+                }
+            };
+
+            match interaction
+                .create_response(&ctx, serenity::CreateInteractionResponse::Acknowledge)
+                .await
+            {
+                Ok(_) => (),
+                Err(e) => error!("Interaction failure, {}", e),
+            }
+        }
+
+        // FIXME define a new error please and thankyou
+        if let Err(why) = message
+            .edit(&ctx, EditMessage::new().components(vec![]))
+            .await
+        {
+            error!("Failed to remove components, {}", why)
+        };
+    });
+
+    Ok(())
 }
 
 #[cfg(test)]

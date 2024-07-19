@@ -1,7 +1,7 @@
 use crate::{Data, Error};
 use backend::links;
 use log::{error, info};
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, Message};
 
 pub async fn listener(
     ctx: &serenity::Context,
@@ -17,7 +17,24 @@ pub async fn listener(
             match links::fix_links(new_message).await {
                 Ok(result) => match result {
                     Some(content) => {
-                        new_message.reply_mention(ctx, content).await?;
+                        let mut target: &Message = new_message;
+                        if let Some(reply_handle) = &new_message.referenced_message {
+                            target = reply_handle
+                        }
+                        match links::message_handler(
+                            content,
+                            new_message.author.id.get(),
+                            new_message.channel_id,
+                            target,
+                        )
+                        .await
+                        {
+                            Ok(_) => (),
+                            Err(e) => {
+                                error!("Something went wrong while sending reply message: {}", e);
+                                return Ok(());
+                            }
+                        }
                         new_message.delete(ctx).await?;
                         // TODO analytics
                         info!("Fixed up a message successfully")
