@@ -81,3 +81,122 @@ pub async fn fix_links(
         Ok(Some(result))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use poise::serenity_prelude::Message;
+
+    trait Content {
+        fn set_content(&mut self, content: impl Into<String>) -> &mut Self;
+    }
+
+    impl Content for Message {
+        fn set_content(&mut self, content: impl Into<String>) -> &mut Self {
+            self.content = content.into();
+            self
+        }
+    }
+
+    fn setup_test_message(content: impl Into<String>) -> Message {
+        let mut message = Message::default();
+        message.set_content(content);
+        message
+    }
+
+    #[test]
+    fn test_load_json() {
+        let json = load_json_patterns();
+        assert!(json.is_ok())
+    }
+
+    #[test]
+    fn test_build_patterns() {
+        let json = load_json_patterns().unwrap();
+        let built = build_all();
+        assert!(built.is_ok());
+        assert_eq!(built.unwrap().len(), json.len())
+    }
+
+    #[tokio::test]
+    async fn test_fix_singular_link() {
+        let test_message = setup_test_message(
+            "this is a test message, https://x.com/testaccount/status/1814183041708990884",
+        );
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "this is a test message, [Twitter](https://fxtwitter.com/testaccount/status/1814183041708990884)"
+        )
+    }
+
+    #[tokio::test]
+    async fn test_multiple_links() {
+        let test_message = setup_test_message("https://x.com/testaccount/status/1814183041708990884, https://twitter.com/testaccount/status/1814183041708990884");
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[Twitter](https://fxtwitter.com/testaccount/status/1814183041708990884), [Twitter](https://fxtwitter.com/testaccount/status/1814183041708990884)"
+        )
+    }
+
+    #[tokio::test]
+    async fn test_twitter_link() {
+        let test_message =
+            setup_test_message("https://x.com/testaccount/status/1814183041708990884");
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[Twitter](https://fxtwitter.com/testaccount/status/1814183041708990884)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instagram_link() {
+        let test_message = setup_test_message("https://instagram.com/reel/foobar/?igsh=baz");
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[Instagram](https://ddinstagram.com/reel/foobar)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tiktok_link() {
+        let test_message = setup_test_message("https://vm.tiktok.com/foobar");
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[TikTok](https://vm.vxtiktok.com/foobar)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pixiv_link() {
+        let test_message = setup_test_message("https://www.pixiv.net/en/artworks/117847824");
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[Pixiv](https://phixiv.net/artworks/117847824)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reddit_link() {
+        let test_message = setup_test_message(
+            "https://www.reddit.com/r/testcommunity/comments/something/somethingAgain/",
+        );
+        let result = fix_links(&test_message).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            &result.unwrap().unwrap(),
+            "[Reddit](https://rxddit.com/r/testcommunity/comments/something/somethingAgain/)"
+        );
+    }
+}
