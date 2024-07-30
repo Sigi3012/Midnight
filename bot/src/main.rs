@@ -45,6 +45,7 @@ async fn main() {
             commands::register::sync(),
             commands::yuri::yuri(),
             commands::mapfeed::mapfeed(),
+            commands::cat::cat(),
         ],
 
         event_handler: |ctx, event, framework, data| {

@@ -1,7 +1,7 @@
 use crate::api::types::Beatmapset;
 use crate::api::{
     types::SearchResponse,
-    {ACCESS_TOKEN, API_SECRET, CLIENT, CLIENT_ID},
+    {ACCESS_TOKEN, OSU_API_SECRET, CLIENT, OSU_CLIENT_ID},
 };
 use log::{debug, error, info, warn};
 use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -41,7 +41,7 @@ impl AuthenticationManager {
 
         let body = format!(
             "client_id={}&client_secret={}&grant_type=client_credentials&scope=public",
-            *CLIENT_ID, *API_SECRET
+            *OSU_CLIENT_ID, *OSU_API_SECRET
         );
 
         let res = client
