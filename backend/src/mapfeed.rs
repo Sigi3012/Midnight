@@ -161,7 +161,7 @@ async fn update_mapfeed() {
 
     match fetch_all_subscribed_channels().await {
         Ok(channels) => {
-            if let None = channels {
+            if channels.is_none() {
                 info!("No channels are subscribed to the mapfeed, exiting.");
                 return;
             }
@@ -176,7 +176,7 @@ async fn update_mapfeed() {
                 message_data.push(MessageData {
                     embed,
                     subscribed_user_ids: None,
-                    beatmapset_data: &beatmapset,
+                    beatmapset_data: beatmapset,
                 });
 
                 if let Err(why) = insert_beatmap(beatmapset.id).await {
@@ -196,14 +196,14 @@ async fn update_mapfeed() {
                             message_data.push(MessageData {
                                 embed,
                                 subscribed_user_ids: Some(ids),
-                                beatmapset_data: &beatmapset,
+                                beatmapset_data: beatmapset,
                             });
                             clean_up_beatmap(beatmapset.id).await;
                         } else {
                             message_data.push(MessageData {
                                 embed,
                                 subscribed_user_ids: None,
-                                beatmapset_data: &beatmapset,
+                                beatmapset_data: beatmapset,
                             });
                             clean_up_beatmap(beatmapset.id).await;
                         }
@@ -240,13 +240,12 @@ async fn update_mapfeed() {
                 "Encounted an error while fetching subscribed channels: {}",
                 why
             );
-            return;
         }
     }
 }
 
 pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
-    let mapper_url = beatmapset.mapper.replace(" ", "%20");
+    let mapper_url = beatmapset.mapper.replace(' ', "%20");
     let most_common_mode = {
         let modes: Vec<&Modes> = beatmapset
             .beatmaps
@@ -311,12 +310,10 @@ pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
         "https://assets.ppy.sh/beatmaps/{}/covers/card.jpg",
         beatmapset.id
     );
-    let embed = CreateEmbed::new()
+    CreateEmbed::new()
         .description(description)
         .colour(colour)
-        .image(image);
-
-    embed
+        .image(image)
 }
 
 async fn clean_up_beatmap(id: i32) {
@@ -331,7 +328,7 @@ async fn clean_up_beatmap(id: i32) {
 }
 
 fn parse_custom_button_id(s: &str) -> ButtonInteraction {
-    let mut i = s.split(".").collect::<Vec<_>>().into_iter();
+    let mut i = s.split('.').collect::<Vec<_>>().into_iter();
     let id: i32 = i.next().unwrap().parse().unwrap();
     let state = match i.next().unwrap() {
         "subscribe" => ButtonState::Subscribe,
@@ -459,7 +456,7 @@ async fn message_handler(
 
 pub async fn populate() -> Result<(), Box<dyn std::error::Error>> {
     info!("Populating database");
-    if let None = fetch_all_ids().await? {
+    if fetch_all_ids().await?.is_none() {
         let ids = fetch_all_qualified_maps().await?;
         insert_beatmaps(ids).await?;
     };
@@ -467,7 +464,7 @@ pub async fn populate() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn subscription_handler(subscriber: i64, link: String) -> Result<(), SubscriptionError> {
-    if OSU_LINK_REGEX.is_match(&link)? == false {
+    if !OSU_LINK_REGEX.is_match(&link)? {
         return Err(SubscriptionError::InvalidLink);
     }
     debug!("{:?}", OSU_LINK_REGEX.captures(&link)?);
@@ -487,7 +484,7 @@ pub async fn unsubscription_handler(
     subscriber: i64,
     link: String,
 ) -> Result<(), SubscriptionError> {
-    if OSU_LINK_REGEX.is_match(&link)? == false {
+    if !OSU_LINK_REGEX.is_match(&link)? {
         return Err(SubscriptionError::InvalidLink);
     }
     debug!("{:?}", OSU_LINK_REGEX.captures(&link)?);

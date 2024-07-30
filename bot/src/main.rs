@@ -1,6 +1,5 @@
 use common::context::set_context_wrapper;
 use database::core::initialize_database;
-use dotenv;
 use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::process::exit;

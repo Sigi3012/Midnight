@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 use backend::api::cat::get_random_image;
-use log::{error, info};
+use log::error;
 use poise::CreateReply;
 
 #[poise::command(prefix_command)]

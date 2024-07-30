@@ -61,7 +61,7 @@ where
 {
     let breeds: Vec<Value> = Deserialize::deserialize(deserializer)?;
     if breeds.is_empty() {
-        return Ok(None);
+        Ok(None)
     } else {
         let breed: Breed =
             serde_json::from_value(breeds[0].clone()).map_err(serde::de::Error::custom)?;
@@ -79,7 +79,9 @@ pub async fn get_random_image(count: i32) -> Result<Vec<ResponseJson>> {
 
         responses.push(response.text().await?);
     }
-    Ok(ResponseJson::from_strings(responses)?)
+
+    let result = ResponseJson::from_strings(responses)?;
+    Ok(result)
 }
 
 #[cfg(test)]

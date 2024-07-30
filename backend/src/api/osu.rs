@@ -25,6 +25,7 @@ pub struct AuthenticationManager {
 }
 
 impl AuthenticationManager {
+    #[allow(clippy::new_ret_no_self)]
     pub async fn new() {
         task::spawn(Self::refresh_token());
     }

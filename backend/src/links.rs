@@ -31,17 +31,17 @@ struct BuiltPattern {
 
 fn load_json_patterns() -> Result<Vec<LoadedJson>, Box<dyn std::error::Error>> {
     let file = include_str!("../../patterns.json");
-    let deserialized: Vec<LoadedJson> = serde_json::from_str(&file)?;
+    let deserialized: Vec<LoadedJson> = serde_json::from_str(file)?;
 
     Ok(deserialized)
 }
 
-fn build_regex(pattern: &str) -> Result<Regex, fancy_regex::Error> {
+fn build_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>> {
     match Regex::new(pattern) {
-        Ok(regex) => return Ok(regex),
+        Ok(regex) => Ok(regex),
         Err(e) => {
             error!("Failed to compile regex pattern '{}': {}", pattern, e);
-            return Err(e);
+            Err(Box::new(e))
         }
     }
 }
@@ -85,7 +85,7 @@ pub async fn fix_links(
         }
     }
 
-    if &result == &message.content {
+    if result == message.content {
         Ok(None)
     } else {
         Ok(Some(result))

@@ -15,8 +15,8 @@ pub async fn listener(
         }
         serenity::FullEvent::Message { new_message, .. } => {
             match links::fix_links(new_message).await {
-                Ok(result) => match result {
-                    Some(content) => {
+                Ok(result) => {
+                    if let Some(content) = result {
                         let mut target: &Message = new_message;
                         if let Some(reply_handle) = &new_message.referenced_message {
                             target = reply_handle
@@ -39,9 +39,7 @@ pub async fn listener(
                         // TODO analytics
                         info!("Fixed up a message successfully")
                     }
-                    // No links were fixed ignore..
-                    None => (),
-                },
+                }
                 Err(e) => {
                     new_message.reply(ctx, "Something went wrong").await?;
                     error!("Something went wrong while fixing a link! {}", e)

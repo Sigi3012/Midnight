@@ -125,7 +125,7 @@ pub async fn subscribe_to_beatmap(
         .await?;
 
     let rows = client.query(&stmt, &[&user_id, &beatmap_id]).await?;
-    if let Some(row) = rows.get(0) {
+    if let Some(row) = rows.first() {
         let status: UserAdditionStatus = row.get(0);
         Ok(status)
     } else {
@@ -143,7 +143,7 @@ pub async fn unsubscribe_from_beatmap(
         .await?;
 
     let rows = client.query(&stmt, &[&user_id, &beatmap_id]).await?;
-    if let Some(row) = rows.get(0) {
+    if let Some(row) = rows.first() {
         let status: UserDeletionStatus = row.get(0);
         Ok(status)
     } else {
@@ -213,13 +213,12 @@ pub async fn subscribe_channel_to_mapfeed(channel_id: i64) -> Result<(), Databas
         .prepare_cached(SUBSCRIBE_CHANNEL_TO_MAPFEED_QUERY)
         .await?;
 
-    match client.execute(&stmt, &[&channel_id]).await? {
-        0 => warn!(
+    if client.execute(&stmt, &[&channel_id]).await? == 0 {
+        warn!(
             "Channel id {} is already subscribed to the mapfeed",
             channel_id
-        ),
-        _ => (),
-    };
+        )
+    }
 
     Ok(())
 }
