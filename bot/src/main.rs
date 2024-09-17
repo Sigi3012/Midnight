@@ -1,8 +1,9 @@
 use common::context::set_context_wrapper;
 use database::core::initialize_database;
-use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::process::exit;
+use tracing::{error, info, warn};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod commands;
 mod events;
@@ -15,7 +16,14 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
-    env_logger::init();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "bot=debug,backend=debug,database=debug,serenity=warn,poise=warn".into()
+            }),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     let token = std::env::var("DISCORD_TOKEN").unwrap_or_else(|err| {
         error!("Missing DISCORD_TOKEN: {}", err);

@@ -9,7 +9,8 @@ services:
       - POSTGRES_USERNAME=postgres
       - POSTGRES_PASSWORD=
       - POSTGRES_HOST=db
-      - RUST_LOG=bot=info,backend=info,database=info
+      # Leave commented for default logging
+      # - RUST_LOG=bot=,backend=,database=,serenity=,poise=
     restart: unless-stopped
     depends_on:
       - db
