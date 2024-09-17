@@ -21,3 +21,4 @@ lazy_static! {
 
 pub mod core;
 pub mod mapfeed;
+pub mod subscriptions;

@@ -108,7 +108,7 @@ pub async fn viewsubscribed(ctx: Context<'_>) -> Result<(), Error> {
 
 mod controls {
     use crate::{Context, Error};
-    use database::mapfeed::{subscribe_channel_to_mapfeed, unsubscribe_channel_from_mapfeed};
+    use database::subscriptions::{subscription_handler, ChannelType, SubscriptionMode};
     use log::info;
     use poise::{reply::CreateReply, serenity_prelude::Mentionable};
 
@@ -124,7 +124,11 @@ mod controls {
         required_permissions = "ADMINISTRATOR"
     )]
     pub async fn subscribe(ctx: Context<'_>) -> Result<(), Error> {
-        subscribe_channel_to_mapfeed(ctx.channel_id().get() as i64).await?;
+        subscription_handler(
+            ctx.channel_id().get() as i64,
+            ChannelType::Mapfeed(SubscriptionMode::Subscribe),
+        )
+        .await?;
         info!(
             "Subscribed channel ID: {}, to mapfeed successfully",
             ctx.channel_id().get()
@@ -145,7 +149,11 @@ mod controls {
         required_permissions = "ADMINISTRATOR"
     )]
     pub async fn unsubscribe(ctx: Context<'_>) -> Result<(), Error> {
-        unsubscribe_channel_from_mapfeed(ctx.channel_id().get() as i64).await?;
+        subscription_handler(
+            ctx.channel_id().get() as i64,
+            ChannelType::Mapfeed(SubscriptionMode::Unsubscribe),
+        )
+        .await?;
         info!(
             "Unsubscribed channel ID: {}, from mapfeed successfully",
             ctx.channel_id().get()

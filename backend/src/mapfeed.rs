@@ -6,9 +6,15 @@ use crate::{
     types::SubscriptionError,
 };
 use common::{context::get_context_wrapper, math::mode};
-use database::mapfeed::{
-    delete_beatmap, fetch_all_ids, fetch_all_subscribed_channels, fetch_all_subscribers,
-    insert_beatmap, insert_beatmaps, subscribe_to_beatmap, unsubscribe_from_beatmap,
+use database::{
+    mapfeed::{
+        delete_beatmap, fetch_all_ids, fetch_all_subscribers, insert_beatmap, insert_beatmaps,
+        subscribe_to_beatmap, unsubscribe_from_beatmap,
+    },
+    subscriptions::{
+        fetch_all_subscribed_channels, ChannelType, SubscriptionMode, UserAdditionStatus,
+        UserDeletionStatus,
+    },
 };
 use fancy_regex::Regex;
 use log::{debug, error, info, warn};
@@ -159,7 +165,7 @@ async fn update_mapfeed() {
     );
     info!("Common ids: {:?}", common_ids);
 
-    match fetch_all_subscribed_channels().await {
+    match fetch_all_subscribed_channels(ChannelType::Mapfeed(SubscriptionMode::Subscribe)).await {
         Ok(channels) => {
             if channels.is_none() {
                 info!("No channels are subscribed to the mapfeed, exiting.");
@@ -383,10 +389,10 @@ async fn message_handler(
                             .await
                         {
                             Ok(status) => match status {
-                                database::mapfeed::UserAdditionStatus::UserAdded => {
+                                UserAdditionStatus::UserAdded => {
                                     content = "Subscribed successfully"
                                 }
-                                database::mapfeed::UserAdditionStatus::UserAlreadyExists => {
+                                UserAdditionStatus::UserAlreadyExists => {
                                     content = "You are already subscribed to this beatmap!"
                                 }
                             },
@@ -404,10 +410,10 @@ async fn message_handler(
                             .await
                         {
                             Ok(status) => match status {
-                                database::mapfeed::UserDeletionStatus::UserRemoved => {
+                                UserDeletionStatus::UserRemoved => {
                                     content = "Unsubscribed successfully"
                                 }
-                                database::mapfeed::UserDeletionStatus::UserDoesNotExist => {
+                                UserDeletionStatus::UserDoesNotExist => {
                                     content = "You are not subscribed to this beatmap!"
                                 }
                             },
