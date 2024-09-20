@@ -1,4 +1,4 @@
-use crate::api::{CLIENT, TWITTER_REGEX};
+use crate::{api::TWITTER_REGEX, REQWEST_CLIENT};
 use log::{debug, info};
 use rand::{thread_rng, Rng};
 use serde::Deserialize;
@@ -45,7 +45,7 @@ pub async fn get_random_post(count: i32) -> Result<Vec<(String, Option<String>)>
     let page_number = generate_number(PAGE_RANGE).await.to_string();
     let url = BASE_URL.replace("{page_id}", &page_number);
 
-    let response = CLIENT.get(&url).send().await?;
+    let response = REQWEST_CLIENT.get(&url).send().await?;
     let xml = response.text().await?;
     let p: Posts = serde_xml_rs::from_str(&xml)?;
 

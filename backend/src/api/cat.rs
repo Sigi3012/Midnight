@@ -1,4 +1,4 @@
-use crate::api::{CAT_API_SECRET, CLIENT};
+use crate::{api::CAT_API_SECRET, REQWEST_CLIENT};
 use log::info;
 use reqwest::header::{HeaderMap, HeaderName};
 use serde::{Deserialize, Deserializer};
@@ -70,7 +70,7 @@ where
 }
 
 pub async fn get_random_image(count: i32) -> Result<Vec<ResponseJson>> {
-    let client = CLIENT.clone();
+    let client = REQWEST_CLIENT.clone();
     info!("Attempting to fetch {} images", count);
 
     let mut responses: Vec<String> = vec![];

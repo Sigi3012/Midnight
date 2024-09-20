@@ -1,7 +1,9 @@
-use crate::api::types::Beatmapset;
-use crate::api::{
-    types::SearchResponse,
-    {ACCESS_TOKEN, OSU_API_SECRET, CLIENT, OSU_CLIENT_ID},
+use crate::{
+    api::{
+        types::{Beatmapset, SearchResponse},
+        {ACCESS_TOKEN, OSU_API_SECRET, OSU_CLIENT_ID},
+    },
+    REQWEST_CLIENT,
 };
 use log::{debug, error, info, warn};
 use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -31,7 +33,7 @@ impl AuthenticationManager {
     }
 
     async fn authenticate() -> Result<AuthenticationManager, Box<dyn std::error::Error>> {
-        let client = CLIENT.clone();
+        let client = REQWEST_CLIENT.clone();
 
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, "application/json".parse().unwrap());
@@ -80,7 +82,7 @@ impl AuthenticationManager {
 }
 
 pub async fn fetch_all_qualified_maps() -> Result<Vec<i32>, Box<dyn std::error::Error>> {
-    let client = CLIENT.clone();
+    let client = REQWEST_CLIENT.clone();
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
@@ -137,14 +139,14 @@ pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>, Box<dyn st
 
     let responses: Arc<Mutex<Vec<Beatmapset>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let client = CLIENT.clone();
+    let client = REQWEST_CLIENT.clone();
     let semaphore = Arc::new(Semaphore::new(REQUEST_THREAD_COUNT));
     let mut handles = Vec::new();
 
     // Stupid implementation
     let loop_ids = ids.clone();
     for id in loop_ids {
-        let client = Arc::clone(&client);
+        let client = client.clone();
         let headers = headers.clone();
         let semaphore = Arc::clone(&semaphore);
         let responses = Arc::clone(&responses);
