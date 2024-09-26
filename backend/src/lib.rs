@@ -12,3 +12,4 @@ pub mod types;
 pub mod api;
 pub mod links;
 pub mod mapfeed;
+pub mod music;

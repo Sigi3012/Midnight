@@ -1,7 +1,12 @@
 use crate::{Data, Error};
-use backend::links;
-use log::{error, info};
-use poise::serenity_prelude::{self as serenity, Message};
+use backend::{
+    links,
+    music::{music_link_handler, DownloadError},
+};
+use log::{error, info, warn};
+use poise::serenity_prelude::{
+    self as serenity, CreateAttachment, CreateMessage, Message, MessageFlags,
+};
 
 pub async fn listener(
     ctx: &serenity::Context,
@@ -45,6 +50,31 @@ pub async fn listener(
                     error!("Something went wrong while fixing a link! {}", e)
                 }
             };
+
+            match music_link_handler(new_message).await {
+                Ok(Some(song)) => {
+                    let builder = CreateMessage::new()
+                        .add_file(CreateAttachment::bytes(song.get(), "audio.ogg"))
+                        .flags(MessageFlags::SUPPRESS_NOTIFICATIONS)
+                        .reference_message(new_message);
+
+                    new_message.channel_id.send_message(&ctx, builder).await?;
+                }
+                Ok(None) => (),
+                Err(DownloadError::FileTooLarge) => {
+                    warn!("File exceeds upload size");
+                    new_message
+                        .reply(&ctx, "File is too large to download")
+                        .await?;
+                }
+                Err(DownloadError::DownloadTimeout(e)) => {
+                    warn!("Download took too long, {}", e);
+                    new_message.reply(&ctx, "Download timed out").await?;
+                }
+                Err(_) => {
+                    new_message.reply(&ctx, "Failed to download audio").await?;
+                }
+            }
         }
         _ => {}
     }

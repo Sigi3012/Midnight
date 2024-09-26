@@ -25,7 +25,7 @@ RUN cargo build --release --bin bot
 
 # Run on clean alpine
 FROM alpine:3 AS runtime
-RUN apk update && apk add --no-cache pkgconfig libgcc
+RUN apk update && apk add --no-cache pkgconfig libgcc yt-dlp ffmpeg
 WORKDIR /midnight
 COPY --from=builder /midnight/target/release/bot .
 ENTRYPOINT ["/midnight/bot"]
