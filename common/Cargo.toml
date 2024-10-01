@@ -6,3 +6,6 @@ version.workspace = true
 [dependencies]
 once_cell.workspace = true
 serenity.workspace = true
+
+[lints]
+workspace = true

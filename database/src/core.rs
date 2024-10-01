@@ -1,6 +1,7 @@
 use crate::DB_CONFIG;
-use deadpool_postgres::{Client, PoolError, RecyclingMethod};
-use deadpool_postgres::{Manager, ManagerConfig, Pool};
+use deadpool_postgres::{
+    BuildError, Client, Manager, ManagerConfig, Pool, PoolError, RecyclingMethod,
+};
 use log::{error, info};
 use once_cell::sync::OnceCell;
 use std::ops::DerefMut;
@@ -31,8 +32,14 @@ pub enum CreateTablesError {
 pub enum DatabaseError {
     #[error("Postgres error: {0}")]
     TokioPostgres(#[from] tokio_postgres::Error),
+    #[error("Failed to run migrations")]
+    MigrationError,
+    #[error("Empty connection pool")]
+    EmptyPool,
     #[error("Connection pool error: {0}")]
     PoolError(#[from] PoolError),
+    #[error("Pool creation error: {0}")]
+    PoolCreationError(#[from] BuildError),
     #[error("Unexpected result from database")]
     UnexpectedResult,
 }
@@ -60,23 +67,26 @@ async fn check_database_existance() -> Result<(), tokio_postgres::Error> {
     }
 }
 
-async fn create_connection_pool() -> Pool {
+async fn create_connection_pool() -> Result<Pool, DatabaseError> {
     let pg_config = DB_CONFIG.clone();
     let mgr_config = ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     };
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    Pool::builder(mgr).max_size(16).build().unwrap()
+    match Pool::builder(mgr).max_size(16).build() {
+        Ok(pool) => Ok(pool),
+        Err(e) => Err(DatabaseError::PoolCreationError(e)),
+    }
 }
 
-pub async fn get_client_from_pool() -> Result<Client, PoolError> {
-    let client = DB_POOL.get().unwrap().get().await?;
+pub async fn get_client_from_pool() -> Result<Client, DatabaseError> {
+    let client = DB_POOL.get().ok_or(DatabaseError::EmptyPool)?.get().await?;
     Ok(client)
 }
 
-async fn run_migrations() {
-    let pool = DB_POOL.get().unwrap();
-    let mut conn = pool.get().await.unwrap();
+async fn run_migrations() -> Result<(), DatabaseError> {
+    let pool = DB_POOL.get().ok_or(DatabaseError::EmptyPool)?;
+    let mut conn = pool.get().await.map_err(DatabaseError::PoolError)?;
     let client = conn.deref_mut().deref_mut();
     let report = embedded::migrations::runner().run_async(client).await;
 
@@ -86,10 +96,13 @@ async fn run_migrations() {
             panic!("Database migrations error: {}", e)
         }
     }
+
+    Ok(())
 }
 
 pub async fn initialize_database() -> Result<(), CreateTablesError> {
     if INITALIZED.get().is_some() {
+        return Ok(());
     } else {
         INITALIZED
             .set(())
@@ -97,9 +110,18 @@ pub async fn initialize_database() -> Result<(), CreateTablesError> {
     }
 
     check_database_existance().await?;
-    let pool = create_connection_pool().await;
-    let _ = DB_POOL.set(pool);
-    run_migrations().await;
-
+    match create_connection_pool().await {
+        Ok(pool) => {
+            let _ = DB_POOL.set(pool);
+            if let Err(why) = run_migrations().await {
+                error!("Failed to setup database, {}", why);
+                panic!("{}", why)
+            }
+        }
+        Err(e) => {
+            error!("Failed to setup database, {}", e);
+            panic!("{}", e)
+        }
+    };
     Ok(())
 }

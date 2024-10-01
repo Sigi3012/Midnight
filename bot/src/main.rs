@@ -105,6 +105,7 @@ async fn main() {
 }
 
 #[cfg(unix)]
+#[allow(clippy::unwrap_used)]
 async fn wait_until_shutdown() {
     use tokio::signal::unix as signal;
 
@@ -122,6 +123,8 @@ async fn wait_until_shutdown() {
 }
 
 #[cfg(windows)]
+#[allow(clippy::unwrap_used)]
+// The program is exiting so it doesn't matter if it panics
 async fn wait_until_shutdown() {
     let (mut s1, mut s2) = (
         tokio::signal::windows::ctrl_c().unwrap(),

@@ -14,7 +14,7 @@ const BUTTON_TIMEOUT: Duration = Duration::from_secs(60);
 
 lazy_static! {
     #[derive(Debug)]
-    static ref BUILT_PATTERNS: Vec<BuiltPattern> = build_all().unwrap();
+    static ref BUILT_PATTERNS: Vec<BuiltPattern> = build_all().expect("All patterns should build according to tests");
 }
 
 #[derive(Deserialize)]
@@ -120,6 +120,8 @@ pub async fn message_handler(
 
         // Becomes none at the end of the timeout and continues
         while let Some(interaction) = interaction_stream.next().await {
+            // `custom_id` will ALWAYS be parsable
+            #[allow(clippy::unwrap_used)]
             if interaction.user.id.get() == interaction.data.custom_id.parse::<u64>().unwrap() {
                 if let Err(why) = interaction.message.delete(&ctx).await {
                     error!("Failed to delete message from interaction, {}", why)

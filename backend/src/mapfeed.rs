@@ -5,6 +5,7 @@ use crate::{
     },
     types::SubscriptionError,
 };
+use anyhow::{anyhow, Error};
 use common::{context::get_context_wrapper, math::mode};
 use database::{
     mapfeed::{
@@ -39,6 +40,7 @@ use tokio::{
 };
 
 const FIFTEEN_MINUTES: Duration = Duration::from_secs(60 * 15);
+const ERROR_COOLDOWN: Duration = Duration::from_secs(60 * 3);
 const BUTTON_TIMEOUT: Duration = Duration::from_secs(60 * 120);
 
 pub struct MapfeedManager {
@@ -63,7 +65,7 @@ enum ButtonState {
 
 lazy_static! {
     #[derive(Debug)]
-    static ref OSU_LINK_REGEX: Regex = Regex::new(r#"(?:https:\/\/osu\.ppy\.sh/beatmapsets/)(\d+)"#).unwrap();
+    static ref OSU_LINK_REGEX: Regex = Regex::new(r#"(?:https:\/\/osu\.ppy\.sh/beatmapsets/)(\d+)"#).expect("Regex should compile");
 }
 
 impl MapfeedManager {
@@ -74,8 +76,12 @@ impl MapfeedManager {
         info!("Spawning new mapfeed manager");
         task::spawn(async move {
             while !clone.load(Ordering::Relaxed) {
-                update_mapfeed().await;
-                sleep(FIFTEEN_MINUTES).await;
+                if let Err(why) = update_mapfeed().await {
+                    error!("Failed to refresh mapfeed, error: {}", why);
+                    sleep(ERROR_COOLDOWN).await;
+                } else {
+                    sleep(FIFTEEN_MINUTES).await;
+                }
             }
 
             warn!("Mapfeed stopped")
@@ -99,18 +105,16 @@ impl Display for ButtonState {
 }
 
 // FIXME this really needs error handling
-async fn update_mapfeed() {
+async fn update_mapfeed() -> Result<(), Error> {
     let start_time = Instant::now();
 
     info!("Fetching remote ids");
-    let remote_ids = fetch_all_qualified_maps().await.unwrap();
+    let remote_ids = fetch_all_qualified_maps().await?;
 
     info!("Fetching local ids");
-    let local_ids = {
-        match fetch_all_ids().await.unwrap() {
-            Some(ids) => ids,
-            None => Vec::new(),
-        }
+    let local_ids: Vec<i32> = match fetch_all_ids().await? {
+        Some(ids) => ids,
+        None => Vec::new(),
     };
 
     let remote_ids_hashset: HashSet<i32> = remote_ids.into_iter().collect();
@@ -122,16 +126,7 @@ async fn update_mapfeed() {
             .cloned()
             .collect();
 
-        match fetch_beatmaps(ids).await {
-            Ok(beatmapsets) => beatmapsets,
-            Err(e) => {
-                error!(
-                    "Something went wrong while fetching beatmapset struct: {}",
-                    e
-                );
-                return;
-            }
-        }
+        fetch_beatmaps(ids).await?
     };
     let changed_maps: Vec<Beatmapset> = {
         let ids = local_ids_hashset
@@ -146,7 +141,7 @@ async fn update_mapfeed() {
                     "Something went wrong while fetching beatmapset struct: {}",
                     e
                 );
-                return;
+                return Err(anyhow!("Failed to fetch beatmapset struct"));
             }
         }
     };
@@ -165,92 +160,84 @@ async fn update_mapfeed() {
     );
     info!("Common ids: {:?}", common_ids);
 
-    match fetch_all_subscribed_channels(ChannelType::Mapfeed(SubscriptionMode::Subscribe)).await {
-        Ok(channels) => {
-            if channels.is_none() {
-                info!("No channels are subscribed to the mapfeed, exiting.");
-                return;
-            }
-            // NOTE unwrapping here is fine because we already check if its None
-            let channels = channels.unwrap();
-            debug!("Channel ids {:?}", channels);
+    let channels =
+        match fetch_all_subscribed_channels(ChannelType::Mapfeed(SubscriptionMode::Subscribe))
+            .await?
+        {
+            Some(ids) => ids,
+            None => Vec::new(),
+        };
+    debug!("Channel ids {:?}", channels);
 
-            // Building message embeds
-            let mut message_data: Vec<MessageData> = Vec::new();
-            for beatmapset in new_maps.iter() {
-                let embed = build_embed(beatmapset).await;
-                message_data.push(MessageData {
-                    embed,
-                    subscribed_user_ids: None,
-                    beatmapset_data: beatmapset,
-                });
+    // Building message embeds
+    let mut message_data: Vec<MessageData> = Vec::new();
+    for beatmapset in new_maps.iter() {
+        let embed = build_embed(beatmapset).await?;
+        message_data.push(MessageData {
+            embed,
+            subscribed_user_ids: None,
+            beatmapset_data: beatmapset,
+        });
 
-                if let Err(why) = insert_beatmap(beatmapset.id).await {
-                    error!(
-                        "ID: {} failed to insert into database, skipping insertion. Error: {}",
-                        beatmapset.id, why
-                    )
-                } else {
-                    debug!("Inserted ID: {}", beatmapset.id)
-                };
-            }
-            for beatmapset in changed_maps.iter() {
-                let embed = build_embed(beatmapset).await;
-                match fetch_all_subscribers(beatmapset.id).await {
-                    Ok(option) => {
-                        if let Some(ids) = option {
-                            message_data.push(MessageData {
-                                embed,
-                                subscribed_user_ids: Some(ids),
-                                beatmapset_data: beatmapset,
-                            });
-                            clean_up_beatmap(beatmapset.id).await;
-                        } else {
-                            message_data.push(MessageData {
-                                embed,
-                                subscribed_user_ids: None,
-                                beatmapset_data: beatmapset,
-                            });
-                            clean_up_beatmap(beatmapset.id).await;
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to fetch subscribers for pk: {}, error: {}",
-                            beatmapset.id, e
-                        )
-                    }
-                }
-            }
-            info!("Sending {} unique messages", message_data.len());
-
-            // Sending messages in every subscribed channel
-            for channel_id in channels {
-                let channel = ChannelId::new(channel_id as u64);
-
-                for message in message_data.iter() {
-                    if let Err(why) = message_handler(channel, message).await {
-                        error!(
-                            "Something went wrong while building and sending message, {}",
-                            why
-                        )
-                    };
-                }
-            }
-
-            let duration = start_time.elapsed();
-            info!("Mapfeed cycle took {:?} seconds", duration)
-        }
-        Err(why) => {
+        if let Err(why) = insert_beatmap(beatmapset.id).await {
             error!(
-                "Encounted an error while fetching subscribed channels: {}",
-                why
-            );
+                "ID: {} failed to insert into database, skipping insertion. Error: {}",
+                beatmapset.id, why
+            )
+        } else {
+            debug!("Inserted ID: {}", beatmapset.id)
+        };
+    }
+    for beatmapset in changed_maps.iter() {
+        let embed = build_embed(beatmapset).await?;
+        match fetch_all_subscribers(beatmapset.id).await {
+            Ok(option) => {
+                if let Some(ids) = option {
+                    message_data.push(MessageData {
+                        embed,
+                        subscribed_user_ids: Some(ids),
+                        beatmapset_data: beatmapset,
+                    });
+                    clean_up_beatmap(beatmapset.id).await;
+                } else {
+                    message_data.push(MessageData {
+                        embed,
+                        subscribed_user_ids: None,
+                        beatmapset_data: beatmapset,
+                    });
+                    clean_up_beatmap(beatmapset.id).await;
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to fetch subscribers for pk: {}, error: {}",
+                    beatmapset.id, e
+                )
+            }
         }
     }
+    info!("Sending {} unique messages", message_data.len());
+
+    // Sending messages in every subscribed channel
+    for channel_id in channels {
+        let channel = ChannelId::new(channel_id as u64);
+
+        for message in message_data.iter() {
+            if let Err(why) = message_handler(channel, message).await {
+                error!(
+                    "Something went wrong while building and sending message, {}",
+                    why
+                )
+            };
+        }
+    }
+
+    let duration = start_time.elapsed();
+    info!("Mapfeed cycle took {:?} seconds", duration);
+    Ok(())
 }
 
-pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
+pub async fn build_embed(beatmapset: &Beatmapset) -> Result<CreateEmbed, Error> {
     let mapper_url = beatmapset.mapper.replace(' ', "%20");
     let most_common_mode = {
         let modes: Vec<&Modes> = beatmapset
@@ -287,8 +274,8 @@ pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
 
             format!(
                 "{} - {} \u{2605} \u{2022} {} Difficulties",
-                min_rating.unwrap(),
-                max_rating.unwrap(),
+                min_rating.unwrap_or(&&0.0),
+                max_rating.unwrap_or(&&0.0),
                 beatmapset.beatmaps.len()
             )
         }
@@ -301,7 +288,7 @@ pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
 
     let description = format!(
         "**[{}](https://osu.ppy.sh/beatmapsets/{})** | **{}{}\nMapped by [{}](https://osu.ppy.sh/users/{}) | [{}]\nArtist: {}\nSubmitted: <t:{}:R>\n\n{}",
-        beatmapset.title, beatmapset.id, beatmapset.ranked_status, ranked_date_string, beatmapset.mapper, mapper_url, most_common_mode, beatmapset.artist, beatmapset.submitted_date_unix.unwrap(), star_rating_display_string
+        beatmapset.title, beatmapset.id, beatmapset.ranked_status, ranked_date_string, beatmapset.mapper, mapper_url, most_common_mode, beatmapset.artist, beatmapset.submitted_date_unix.ok_or(anyhow!("Missing submitted data"))?, star_rating_display_string
     );
     let colour = match &beatmapset.ranked_status {
         // This is marked explicitly on purpose, do not wildcard match the colours
@@ -316,10 +303,10 @@ pub async fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
         "https://assets.ppy.sh/beatmaps/{}/covers/card.jpg",
         beatmapset.id
     );
-    CreateEmbed::new()
+    Ok(CreateEmbed::new()
         .description(description)
         .colour(colour)
-        .image(image)
+        .image(image))
 }
 
 async fn clean_up_beatmap(id: i32) {
@@ -333,6 +320,8 @@ async fn clean_up_beatmap(id: i32) {
     };
 }
 
+// TODO Change to HashMap stored in Data
+#[allow(clippy::unwrap_used)]
 fn parse_custom_button_id(s: &str) -> ButtonInteraction {
     let mut i = s.split('.').collect::<Vec<_>>().into_iter();
     let id: i32 = i.next().unwrap().parse().unwrap();

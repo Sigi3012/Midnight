@@ -10,26 +10,28 @@ const BASE_URL: &str = "https://api.thecatapi.com/v1/images/search";
 
 lazy_static! {
     // Custom header types
-    pub static ref X_API_KEY: HeaderName = HeaderName::from_str("x-api-key").unwrap();
-    pub static ref ORDER: HeaderName = HeaderName::from_str("order").unwrap();
+    pub static ref X_API_KEY: HeaderName = HeaderName::from_str("x-api-key").expect("Header should not error");
+    pub static ref ORDER: HeaderName = HeaderName::from_str("order").expect("Header should not error");
 
     pub static ref HEADERS: HeaderMap = {
         let mut headers = HeaderMap::new();
-        headers.insert(X_API_KEY.clone(), CAT_API_SECRET.parse().unwrap());
-        headers.insert(ORDER.clone(), "RAND".parse().unwrap());
+        headers.insert(X_API_KEY.clone(), CAT_API_SECRET.parse().expect("CAT_API_SECRET should parse into HEADERS"));
+        headers.insert(ORDER.clone(), "RAND".parse().expect("RAND should parse into HEADERS"));
         headers
     };
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+type Result<'a, T> = std::result::Result<T, CatError<'a>>;
 
 // TODO/FIXME move lines 27 to 70, to types.rs
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum CatError<'a> {
     #[error("Reqwest error: {0}")]
     ReqwestError(#[from] reqwest::Error),
     #[error("Serde parse error: {0}")]
     SerdeError(#[from] serde_json::Error),
+    #[error("{0}")]
+    UnexpectedResponse(&'a str),
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -45,11 +47,15 @@ pub struct Breed {
 }
 
 impl ResponseJson {
-    fn from_strings(responses: Vec<String>) -> Result<Vec<Self>> {
+    fn from_strings(responses: Vec<String>) -> Result<'static, Vec<Self>> {
         let mut v: Vec<Self> = vec![];
         for s in responses {
             let mut deserialized: Vec<Self> = serde_json::from_str(&s)?;
-            v.push(deserialized.pop().unwrap())
+            v.push(
+                deserialized
+                    .pop()
+                    .ok_or(CatError::UnexpectedResponse("Empty response for string"))?,
+            )
         }
         Ok(v)
     }
@@ -69,7 +75,7 @@ where
     }
 }
 
-pub async fn get_random_image(count: i32) -> Result<Vec<ResponseJson>> {
+pub async fn get_random_image(count: i32) -> Result<'static, Vec<ResponseJson>> {
     let client = REQWEST_CLIENT.clone();
     info!("Attempting to fetch {} images", count);
 

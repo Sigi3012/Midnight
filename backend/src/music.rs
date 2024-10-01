@@ -21,7 +21,7 @@ lazy_static! {
     static ref REGEX: Regex = Regex::new(
         r#"https?:\/\/(?:youtu\.be|(?:www\.|music\.)?youtube\.com)\/(?:watch\?v=)?([\w-]+)"#
     )
-    .unwrap();
+    .expect("Regex should compile");
     pub static ref CHANNEL_CACHE: ChannelCache = ChannelCache::new();
 }
 
@@ -40,6 +40,7 @@ pub enum DownloadError {
     DownloadTimeout(#[from] Elapsed),
 }
 
+#[derive(Default)]
 pub struct ChannelCache {
     initialized: OnceCell<()>,
     channels: Mutex<HashSet<i64>>,
@@ -87,8 +88,7 @@ impl ChannelCache {
                     guard.clear()
                 }
                 Err(e) => {
-                    error!("Failed to update music channel cache, {}", e);
-                    return;
+                    error!("Failed to update music channel cache, {}", e)
                 }
             }
         }
@@ -99,7 +99,7 @@ impl ChannelCache {
         if let Ok(Some(ids)) =
             fetch_all_subscribed_channels(ChannelType::Music(SubscriptionMode::Subscribe)).await
         {
-            *guard = ids.iter().map(|i| *i).collect::<HashSet<i64>>()
+            *guard = ids.iter().cloned().collect::<HashSet<i64>>()
         } else {
             *guard = HashSet::new()
         }
@@ -129,6 +129,10 @@ impl Song {
 
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -160,7 +164,7 @@ fn check_link(message: &str) -> Option<String> {
         Ok(None) => None,
         Err(e) => {
             warn!("Failed to get captures on {}, error: {}", message, e);
-            return None;
+            None
         }
     }
 }
@@ -191,9 +195,10 @@ async fn download_audio(id: String) -> Result<Song, DownloadError> {
     Ok(Song::new(audio_data))
 }
 
+#[cfg(test)]
 mod tests {
     // Rust analyzer is stupid
-    #![allow(unused_imports)]
+    #![allow(unused_imports, clippy::unwrap_used)]
     use super::*;
 
     macro_rules! regex_test {

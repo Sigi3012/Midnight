@@ -12,3 +12,6 @@ refinery.workspace = true
 thiserror.workspace = true
 tokio-postgres.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true

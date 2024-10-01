@@ -5,12 +5,13 @@ use crate::{
     },
     REQWEST_CLIENT,
 };
+use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn};
 use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-use tokio::sync::Semaphore;
 use tokio::{
+    sync::Semaphore,
     task,
     time::{sleep, Duration},
 };
@@ -26,6 +27,10 @@ pub struct AuthenticationManager {
     expires_in: u64,
 }
 
+// TODO
+// Lazy load the access token
+// Convert new to non-async and change `access_token` to Option<String>
+// Remove `refresh_token()`
 impl AuthenticationManager {
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() {
@@ -36,10 +41,15 @@ impl AuthenticationManager {
         let client = REQWEST_CLIENT.clone();
 
         let mut headers = HeaderMap::new();
-        headers.insert(ACCEPT, "application/json".parse().unwrap());
+        headers.insert(
+            ACCEPT,
+            "application/json".parse().expect("Header should parse"),
+        );
         headers.insert(
             CONTENT_TYPE,
-            "application/x-www-form-urlencoded".parse().unwrap(),
+            "application/x-www-form-urlencoded"
+                .parse()
+                .expect("Header should parse"),
         );
 
         let body = format!(
@@ -55,8 +65,8 @@ impl AuthenticationManager {
             .await?;
 
         if res.status().is_success() {
-            let text = res.text().await.unwrap();
-            let deserialized: AuthenticationManager = serde_json::from_str(&text).unwrap();
+            let text = res.text().await?;
+            let deserialized: AuthenticationManager = serde_json::from_str(&text)?;
 
             Ok(deserialized)
         } else {
@@ -81,17 +91,26 @@ impl AuthenticationManager {
     }
 }
 
-pub async fn fetch_all_qualified_maps() -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+pub async fn fetch_all_qualified_maps() -> Result<Vec<i32>> {
     let client = REQWEST_CLIENT.clone();
 
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
-    headers.insert(ACCEPT, "application/json".parse().unwrap());
+    headers.insert(
+        CONTENT_TYPE,
+        "application/json".parse().expect("Header should parse"),
+    );
+    headers.insert(
+        ACCEPT,
+        "application/json".parse().expect("Header should parse"),
+    );
 
     if let Some(ref token) = *ACCESS_TOKEN.lock().await {
         let formatted = format!("Bearer {}", token);
 
-        headers.insert(AUTHORIZATION, formatted.parse().unwrap());
+        headers.insert(
+            AUTHORIZATION,
+            formatted.parse().expect("Access token header should parse"),
+        );
     };
 
     let mut ids: Vec<i32> = Vec::new();
@@ -99,36 +118,36 @@ pub async fn fetch_all_qualified_maps() -> Result<Vec<i32>, Box<dyn std::error::
 
     loop {
         debug!("Running loop, {:?}", cursor_string);
-        if cursor_string.is_none() {
-            break;
+        match cursor_string {
+            Some(cursor) => {
+                let res = client
+                    .get(format!(
+                        "{}/beatmapsets/search?nsfw=true&s=qualified&cursor_string={}",
+                        BASE_API_URL, cursor,
+                    ))
+                    .headers(headers.clone())
+                    .send()
+                    .await?;
+
+                if res.status().is_success() {
+                    let text = res.text().await?;
+                    let mut deserialized: SearchResponse = serde_json::from_str(&text)?;
+
+                    cursor_string = deserialized.cursor_string;
+                    debug!("Update cursor sting, {:?}", cursor_string);
+                    ids.append(&mut deserialized.beatmapset_ids);
+                } else {
+                    return Err(anyhow!("Non-success status code: {}", res.status()));
+                };
+            }
+            None => break,
         }
-
-        let res = client
-            .get(format!(
-                "{}/beatmapsets/search?nsfw=true&s=qualified&cursor_string={}",
-                BASE_API_URL,
-                cursor_string.unwrap()
-            ))
-            .headers(headers.clone())
-            .send()
-            .await?;
-
-        if res.status().is_success() {
-            let text = res.text().await.unwrap();
-            let mut deserialized: SearchResponse = serde_json::from_str(&text).unwrap();
-
-            cursor_string = deserialized.cursor_string;
-            debug!("Update cursor sting, {:?}", cursor_string);
-            ids.append(&mut deserialized.beatmapset_ids);
-        } else {
-            return Err(format!("Non-success status code: {}", res.status()).into());
-        };
     }
 
     Ok(ids)
 }
 
-pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>, Box<dyn std::error::Error>> {
+pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>> {
     let mut headers = HeaderMap::new();
 
     if let Some(ref token) = *ACCESS_TOKEN.lock().await {
@@ -143,7 +162,7 @@ pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>, Box<dyn st
     let semaphore = Arc::new(Semaphore::new(REQUEST_THREAD_COUNT));
     let mut handles = Vec::new();
 
-    // Stupid implementation
+    // TODO fix this absolute abhorent mess
     let loop_ids = ids.clone();
     for id in loop_ids {
         let client = client.clone();
@@ -160,17 +179,25 @@ pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>, Box<dyn st
             match response {
                 Ok(res) => {
                     if res.status().is_success() {
-                        let text = res.text().await.unwrap();
-                        debug!("Success: ID {}", id);
-                        match serde_json::from_str(&text) {
-                            Ok(deserialized) => {
-                                let mut responses = responses.lock().unwrap();
-                                responses.push(deserialized)
+                        match res.text().await {
+                            Ok(text) => {
+                                debug!("Success: ID {}", id);
+                                match serde_json::from_str(&text) {
+                                    Ok(deserialized) => match responses.lock() {
+                                        Ok(mut guard) => guard.push(deserialized),
+                                        Err(e) => {
+                                            error!("Failed to aquire mutex guard, {}", e);
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!("An error occurred while deserializing json: {}", e);
+                                    }
+                                };
                             }
                             Err(e) => {
-                                error!("An error occurred while deserializing json: {}", e);
+                                error!("Failed to get text from response, {}", e)
                             }
-                        };
+                        }
                     } else {
                         warn!("Failed: ID {} - Status: {:?}", id, res.status());
                     }
@@ -188,7 +215,10 @@ pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>, Box<dyn st
 
     futures::future::join_all(handles).await;
 
-    let mut response_guard = responses.lock().unwrap();
+    let mut response_guard = match responses.lock() {
+        Ok(guard) => guard,
+        Err(e) => return Err(anyhow!("Failed to aquire mutex guard, {}", e)),
+    };
     let response_vec = std::mem::take(&mut *response_guard);
 
     if response_vec.len() != ids.len() {
