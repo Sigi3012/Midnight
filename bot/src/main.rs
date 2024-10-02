@@ -2,6 +2,7 @@ use common::context::set_context_wrapper;
 use database::core::initialize_database;
 use poise::serenity_prelude as serenity;
 use std::process::exit;
+use tokio::time::Instant;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -9,7 +10,9 @@ mod commands;
 mod events;
 mod tasks;
 
-pub struct Data {} // User data, which is stored and accessible in all command invocations
+pub struct Data {
+    startup_time: Instant,
+}
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
@@ -53,6 +56,7 @@ async fn main() {
             commands::yuri::yuri(),
             commands::mapfeed::mapfeed(),
             commands::moderation::_mod(),
+            commands::utility::status(),
             commands::cat::cat(),
         ],
 
@@ -74,7 +78,9 @@ async fn main() {
                 tasks::init_tasks().await;
                 set_context_wrapper(ctx.shard.clone(), ctx.http.clone(), ctx.cache.clone());
 
-                Ok(Data {})
+                Ok(Data {
+                    startup_time: Instant::now(),
+                })
             })
         })
         .build();

@@ -4,12 +4,19 @@ use deadpool_postgres::{
 };
 use log::{error, info};
 use once_cell::sync::OnceCell;
-use std::ops::DerefMut;
+use std::{
+    ops::DerefMut,
+    time::{Duration, Instant},
+};
 use thiserror::Error;
 use tokio_postgres::NoTls;
 
 const DATABASE_CREATION_QUERY: &str = r#"
     CREATE DATABASE midnight OWNER postgres;
+"#;
+
+const PING_QUERY: &str = r#"
+    SELECT 1;
 "#;
 
 static INITALIZED: OnceCell<()> = OnceCell::new();
@@ -124,4 +131,14 @@ pub async fn initialize_database() -> Result<(), CreateTablesError> {
         }
     };
     Ok(())
+}
+
+pub async fn ping_database() -> Result<Duration, DatabaseError> {
+    let start_time = Instant::now();
+
+    let client = get_client_from_pool().await?;
+    let stmt = client.prepare_cached(PING_QUERY).await?;
+    client.execute(&stmt, &[]).await?;
+
+    Ok(start_time.elapsed())
 }
