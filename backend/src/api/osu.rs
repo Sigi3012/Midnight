@@ -6,17 +6,19 @@ use crate::{
     REQWEST_CLIENT,
 };
 use anyhow::{anyhow, Result};
-use log::{debug, error, info, warn};
+use futures::stream::{self, StreamExt};
+use log::{debug, info};
 use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use smallvec::SmallVec;
 use tokio::{
-    sync::Semaphore,
     task,
     time::{sleep, Duration},
 };
 
-const REQUEST_THREAD_COUNT: usize = 16;
+pub type BeatmapsetVec = SmallVec<[Beatmapset; 8]>;
+
+const MAX_CONCURENT_REQUESTS: usize = 16;
 
 const BASE_API_URL: &str = "https://osu.ppy.sh/api/v2";
 const GRANT_URL: &str = "https://osu.ppy.sh/oauth/token";
@@ -147,84 +149,48 @@ pub async fn fetch_all_qualified_maps() -> Result<Vec<i32>> {
     Ok(ids)
 }
 
-pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<Vec<Beatmapset>> {
-    let mut headers = HeaderMap::new();
-
-    if let Some(ref token) = *ACCESS_TOKEN.lock().await {
-        let formatted = format!("Bearer {}", token);
-
-        headers.insert(AUTHORIZATION, formatted.parse()?);
-    };
-
-    let responses: Arc<Mutex<Vec<Beatmapset>>> = Arc::new(Mutex::new(Vec::new()));
-
+pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<BeatmapsetVec> {
+    let headers = build_headers().await?;
     let client = REQWEST_CLIENT.clone();
-    let semaphore = Arc::new(Semaphore::new(REQUEST_THREAD_COUNT));
-    let mut handles = Vec::new();
 
-    // TODO fix this absolute abhorent mess
-    let loop_ids = ids.clone();
-    for id in loop_ids {
-        let client = client.clone();
-        let headers = headers.clone();
-        let semaphore = Arc::clone(&semaphore);
-        let responses = Arc::clone(&responses);
-        let url = format!("{}/beatmapsets/{}", BASE_API_URL, id);
+    let beatmaps: BeatmapsetVec = stream::iter(ids.into_iter())
+        .map(|id| fetch_beatmap(id, &client, headers.clone()))
+        .buffer_unordered(MAX_CONCURENT_REQUESTS)
+        .filter_map(|result| futures::future::ready(result.ok()))
+        .collect()
+        .await;
 
-        let permit = semaphore.acquire_owned().await?;
+    Ok(beatmaps)
+}
 
-        let handle = tokio::spawn(async move {
-            let response = client.get(&url).headers(headers).send().await;
+async fn build_headers() -> Result<HeaderMap, anyhow::Error> {
+    ACCESS_TOKEN
+        .lock()
+        .await
+        .as_ref()
+        .map(|token| {
+            let mut headers = HeaderMap::with_capacity(1);
+            #[allow(clippy::unwrap_used)]
+            headers.insert(AUTHORIZATION, format!("Bearer {}", token).parse().unwrap());
+            headers
+        })
+        .ok_or_else(|| anyhow!("ACCESS_TOKEN is missing"))
+}
 
-            match response {
-                Ok(res) => {
-                    if res.status().is_success() {
-                        match res.text().await {
-                            Ok(text) => {
-                                debug!("Success: ID {}", id);
-                                match serde_json::from_str(&text) {
-                                    Ok(deserialized) => match responses.lock() {
-                                        Ok(mut guard) => guard.push(deserialized),
-                                        Err(e) => {
-                                            error!("Failed to aquire mutex guard, {}", e);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        error!("An error occurred while deserializing json: {}", e);
-                                    }
-                                };
-                            }
-                            Err(e) => {
-                                error!("Failed to get text from response, {}", e)
-                            }
-                        }
-                    } else {
-                        warn!("Failed: ID {} - Status: {:?}", id, res.status());
-                    }
-                }
-                Err(e) => {
-                    warn!("Error: ID {} - Error: {:?}", id, e);
-                }
-            }
+async fn fetch_beatmap(
+    id: i32,
+    client: &reqwest::Client,
+    headers: HeaderMap,
+) -> Result<Beatmapset> {
+    let url = format!("{}/beatmapsets/{}", BASE_API_URL, id);
 
-            drop(permit);
-        });
+    let response = client
+        .get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .and_then(|res| res.error_for_status())?;
 
-        handles.push(handle);
-    }
-
-    futures::future::join_all(handles).await;
-
-    let mut response_guard = match responses.lock() {
-        Ok(guard) => guard,
-        Err(e) => return Err(anyhow!("Failed to aquire mutex guard, {}", e)),
-    };
-    let response_vec = std::mem::take(&mut *response_guard);
-
-    if response_vec.len() != ids.len() {
-        error!("An unexpected amount of responses were returned")
-        // TODO return custom Err
-    }
-
-    Ok(response_vec)
+    let text = response.text().await?;
+    Ok(serde_json::from_str::<Beatmapset>(&text)?)
 }

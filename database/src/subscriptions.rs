@@ -47,7 +47,7 @@ pub enum UserDeletionStatus {
     UserDoesNotExist,
 }
 
-impl<'a> FromSql<'a> for UserAdditionStatus {
+impl FromSql<'_> for UserAdditionStatus {
     fn from_sql(
         _type: &Type,
         raw: &[u8],
@@ -64,7 +64,7 @@ impl<'a> FromSql<'a> for UserAdditionStatus {
     }
 }
 
-impl<'a> FromSql<'a> for UserDeletionStatus {
+impl FromSql<'_> for UserDeletionStatus {
     fn from_sql(
         _type: &Type,
         raw: &[u8],

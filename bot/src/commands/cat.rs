@@ -27,10 +27,7 @@ pub async fn cat(ctx: Context<'_>, count: Option<i32>) -> Result<(), Error> {
         }
         Err(e) => {
             ctx.reply("Something went wrong").await?;
-            error!(
-                "Something went wrong while fetching cat images, {:?}",
-                e
-            )
+            error!("Something went wrong while fetching cat images, {:?}", e)
         }
     };
 

@@ -10,7 +10,7 @@ lazy_static! {
                 .expect("POSTGRES_USERNAME should be set in .env or .docker-compose.yml"),
         );
         conf.password(
-            &env::var("POSTGRES_PASSWORD")
+            env::var("POSTGRES_PASSWORD")
                 .expect("POSTGRES_PASSWORD should be set in .env or .docker-compose.yml"),
         );
         conf.dbname("midnight");

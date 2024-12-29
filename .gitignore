@@ -1,4 +1,5 @@
-/target
+.git
+.idea
 .env
 docker-compose.yml
-backend/patterns.json
+/target

@@ -1,9 +1,9 @@
 use crate::{Context, Error};
 use backend::{
     api::osu::fetch_beatmaps,
-    mapfeed::{create_reply_with_sorted_beatmaps, subscription_handler, unsubscription_handler},
+    mapfeed::{create_reply_with_sorted_beatmaps, subscription_handler},
 };
-use database::mapfeed::fetch_all_subscribed_beatmaps_for_id;
+use database::{mapfeed::fetch_all_subscribed_beatmaps_for_id, subscriptions::SubscriptionMode};
 use log::{error, info};
 use poise::CreateReply;
 
@@ -21,7 +21,13 @@ pub async fn subscribe(
     ctx: Context<'_>,
     #[description = "The url to the beatmap to subscribe to"] link: String,
 ) -> Result<(), Error> {
-    match subscription_handler(ctx.author().id.get() as i64, link).await {
+    match subscription_handler(
+        ctx.author().id.get() as i64,
+        &link,
+        SubscriptionMode::Subscribe,
+    )
+    .await
+    {
         Ok(_) => {
             let builder = CreateReply::default()
                 .content("Subscribed successfully")
@@ -54,7 +60,13 @@ pub async fn unsubscribe(
     ctx: Context<'_>,
     #[description = "The url to the beatmap to subscribe to"] link: String,
 ) -> Result<(), Error> {
-    match unsubscription_handler(ctx.author().id.get() as i64, link).await {
+    match subscription_handler(
+        ctx.author().id.get() as i64,
+        &link,
+        SubscriptionMode::Unsubscribe,
+    )
+    .await
+    {
         Ok(_) => {
             let builder = CreateReply::default()
                 .content("Unsubscribed successfully")
