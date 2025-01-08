@@ -1,144 +1,112 @@
-use crate::DB_CONFIG;
-use deadpool_postgres::{
-    BuildError, Client, Manager, ManagerConfig, Pool, PoolError, RecyclingMethod,
+use anyhow::{Result, bail};
+use diesel_async::{
+    AsyncPgConnection,
+    async_connection_wrapper::AsyncConnectionWrapper,
+    pooled_connection::{
+        AsyncDieselConnectionManager,
+        bb8::{Pool, PooledConnection},
+    },
 };
-use log::{error, info};
-use once_cell::sync::OnceCell;
-use std::{
-    ops::DerefMut,
-    time::{Duration, Instant},
-};
-use thiserror::Error;
-use tokio_postgres::NoTls;
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
+use std::{env, sync::OnceLock, time::Duration};
+use tokio::{task, time};
+use tracing::warn;
 
-const DATABASE_CREATION_QUERY: &str = r#"
-    CREATE DATABASE midnight OWNER postgres;
-"#;
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 
-const PING_QUERY: &str = r#"
-    SELECT 1;
-"#;
+pub type DbPool = Pool<AsyncPgConnection>;
+pub type DbPooledConnection<'a> = PooledConnection<'a, AsyncPgConnection>;
 
-static INITALIZED: OnceCell<()> = OnceCell::new();
-pub static DB_POOL: tokio::sync::OnceCell<Pool> = tokio::sync::OnceCell::const_new();
-
-mod embedded {
-    use refinery::embed_migrations;
-    embed_migrations!("../migrations");
+static INITIALISED: OnceLock<()> = OnceLock::new();
+pub static DB: OnceLock<Database> = OnceLock::new();
+/*
+pub enum Connection<'a> {
+    PooledConnection(PooledConnection<'a, AsyncPgConnection>),
+    Dedicated(AsyncPgConnection),
 }
 
-#[derive(Debug, Error)]
-pub enum CreateTablesError {
-    #[error("Postgres error: {0}")]
-    Postgres(#[from] tokio_postgres::Error),
-    #[error("Tables have already been created")]
-    AlreadyInitalized(),
+ */
+
+pub(crate) mod macros {
+    macro_rules! get_conn {
+        () => {
+            &mut DB.get().unwrap().get_conn().await
+        };
+    }
+    pub(crate) use get_conn;
 }
 
-#[derive(Debug, Error)]
-pub enum DatabaseError {
-    #[error("Postgres error: {0}")]
-    TokioPostgres(#[from] tokio_postgres::Error),
-    #[error("Failed to run migrations")]
-    MigrationError,
-    #[error("Empty connection pool")]
-    EmptyPool,
-    #[error("Connection pool error: {0}")]
-    PoolError(#[from] PoolError),
-    #[error("Pool creation error: {0}")]
-    PoolCreationError(#[from] BuildError),
-    #[error("Unexpected result from database")]
-    UnexpectedResult,
+#[derive(Debug)]
+pub struct Database {
+    pool: DbPool,
 }
 
-async fn check_database_existance() -> Result<(), tokio_postgres::Error> {
-    match DB_CONFIG.connect(NoTls).await {
-        Ok(_) => Ok(()),
-        Err(_) => {
-            let mut changed_config = DB_CONFIG.clone();
-            changed_config.dbname("postgres");
-
-            let (client, connecton) = changed_config.connect(NoTls).await?;
-
-            tokio::spawn(async move {
-                if let Err(why) = connecton.await {
-                    error!("Connection error: {}", why)
-                }
-            });
-            info!("Database does not exist, attempting to create");
-            client.execute(DATABASE_CREATION_QUERY, &[]).await?;
-
-            info!("Successfully created database");
-            Ok(())
+impl Database {
+    async fn new() -> Result<Self> {
+        if INITIALISED.get().is_some() {
+            bail!("Database pool already initialised");
+        } else {
+            INITIALISED
+                .set(())
+                .expect("This should never try to write to `INITIALISED` due to previous check")
         }
-    }
-}
 
-async fn create_connection_pool() -> Result<Pool, DatabaseError> {
-    let pg_config = DB_CONFIG.clone();
-    let mgr_config = ManagerConfig {
-        recycling_method: RecyclingMethod::Fast,
-    };
-    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    match Pool::builder(mgr).max_size(16).build() {
-        Ok(pool) => Ok(pool),
-        Err(e) => Err(DatabaseError::PoolCreationError(e)),
-    }
-}
+        let mut pool = Pool::builder()
+            .max_lifetime(Some(Duration::new(45 * 60, 0)))
+            .build(AsyncDieselConnectionManager::<AsyncPgConnection>::new(
+                env::var("DATABASE_URL").expect("DATABASE_URL should be set in .env"),
+            ))
+            .await
+            .expect("Database pool should be constructable");
 
-pub async fn get_client_from_pool() -> Result<Client, DatabaseError> {
-    let client = DB_POOL.get().ok_or(DatabaseError::EmptyPool)?.get().await?;
-    Ok(client)
-}
-
-async fn run_migrations() -> Result<(), DatabaseError> {
-    let pool = DB_POOL.get().ok_or(DatabaseError::EmptyPool)?;
-    let mut conn = pool.get().await.map_err(DatabaseError::PoolError)?;
-    let client = conn.deref_mut().deref_mut();
-    let report = embedded::migrations::runner().run_async(client).await;
-
-    match report {
-        Ok(_) => info!("Successfully ran migrations"),
-        Err(e) => {
-            panic!("Database migrations error: {}", e)
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn initialize_database() -> Result<(), CreateTablesError> {
-    if INITALIZED.get().is_some() {
-        return Ok(());
-    } else {
-        INITALIZED
-            .set(())
-            .expect("Failed to set background task status to initalized")
-    }
-
-    check_database_existance().await?;
-    match create_connection_pool().await {
-        Ok(pool) => {
-            let _ = DB_POOL.set(pool);
-            if let Err(why) = run_migrations().await {
-                error!("Failed to setup database, {}", why);
-                panic!("{}", why)
+        match run_migrations(&mut pool).await {
+            Ok(_) => Ok(Self { pool }),
+            Err(e) => {
+                bail!(
+                    "Fatal! Something went wrong initialising the database, {}",
+                    e
+                );
             }
         }
-        Err(e) => {
-            error!("Failed to setup database, {}", e);
-            panic!("{}", e)
+    }
+
+    pub async fn get_conn(&self) -> DbPooledConnection {
+        for i in 0..3 {
+            match self.pool.get().await {
+                Ok(p) => return p,
+                Err(e) => {
+                    warn!("{e}. Attempt {i}/3");
+                    time::sleep(Duration::from_millis(500 * i)).await;
+                }
+            }
         }
-    };
+        panic!("Cannot get connection from pool.");
+    }
+
+    pub async fn get_conn_unchecked(&self) -> DbPooledConnection {
+        self.pool
+            .get()
+            .await
+            .expect("Should be able to get connection from pool.")
+    }
+}
+
+pub async fn initialise() -> Result<()> {
+    let _ = DB.set(Database::new().await?);
     Ok(())
 }
 
-pub async fn ping_database() -> Result<Duration, DatabaseError> {
-    let start_time = Instant::now();
+async fn run_migrations(
+    pool: &mut DbPool,
+) -> Result<(), Box<dyn std::error::Error + Sync + Send + 'static>> {
+    let conn = pool.dedicated_connection().await?;
+    let mut wrapper: AsyncConnectionWrapper<AsyncPgConnection> =
+        diesel_async::async_connection_wrapper::AsyncConnectionWrapper::from(conn);
 
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(PING_QUERY).await?;
-    client.execute(&stmt, &[]).await?;
+    task::spawn_blocking(move || {
+        let _ = wrapper.run_pending_migrations(MIGRATIONS);
+    })
+    .await?;
 
-    Ok(start_time.elapsed())
+    Ok(())
 }

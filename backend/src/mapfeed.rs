@@ -1,31 +1,27 @@
-use crate::{
-    api::{
-        osu::{fetch_all_qualified_maps, fetch_beatmaps, BeatmapsetVec},
-        types::{BeatmapStatus, Beatmapset, Modes},
-    },
-    types::SubscriptionError,
+use crate::api::{
+    osu::{BeatmapsetVec, fetch_all_qualified_maps, fetch_beatmaps},
+    types::{BeatmapStatus, Beatmapset, Modes},
 };
-use anyhow::{anyhow, Error};
-use common::context::ContextWrapper;
-use common::{context::get_context_wrapper, math::mode};
+use anyhow::{Error, anyhow, bail};
+use common::{
+    context::{ContextWrapper, get_context_wrapper},
+    math::mode,
+};
 use database::{
     mapfeed::{
-        delete_beatmap, fetch_all_ids, fetch_all_subscribers, insert_beatmap, insert_beatmaps,
-        subscribe_to_beatmap, unsubscribe_from_beatmap,
+        delete_beatmap, fetch_all_subscribers_for_beatmap, fetch_all_tracked, insert_beatmaps,
     },
     subscriptions::{
-        fetch_all_subscribed_channels, ChannelType, SubscriptionMode, UserAdditionStatus,
-        UserDeletionStatus,
+        ChannelType, SubscriptionMode, beatmap_subscription_handler, fetch_all_subscribed_channels,
     },
 };
 use fancy_regex::Regex;
 use futures::future::join_all;
 use itertools::{EitherOrBoth, Itertools};
 use log::{debug, error, info, warn};
-use poise::{serenity_prelude as serenity, CreateReply};
-use serenity::all::ComponentInteraction;
+use poise::{CreateReply, serenity_prelude as serenity};
 use serenity::{
-    all::{CreateInteractionResponse, CreateInteractionResponseMessage},
+    all::{ComponentInteraction, CreateInteractionResponse, CreateInteractionResponseMessage},
     builder::{CreateEmbed, CreateEmbedFooter, CreateMessage},
     futures::StreamExt,
     model::{colour::Colour, id::ChannelId},
@@ -35,13 +31,13 @@ use std::{
     collections::HashSet,
     fmt::Display,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use tokio::{
     task,
-    time::{sleep, Duration, Instant},
+    time::{Duration, Instant, sleep},
 };
 
 const FIFTEEN_MINUTES: Duration = Duration::from_secs(60 * 15);
@@ -117,7 +113,7 @@ async fn update_mapfeed() -> Result<(), Error> {
     let remote_ids = fetch_all_qualified_maps().await?;
 
     info!("Fetching local ids");
-    let local_ids: Vec<i32> = fetch_all_ids().await?.unwrap_or_else(Vec::new);
+    let local_ids: Vec<i32> = fetch_all_tracked().await?.unwrap_or_else(Vec::new);
 
     let remote_ids_hashset: HashSet<i32> = remote_ids.into_iter().collect();
     let local_ids_hashset: HashSet<i32> = local_ids.into_iter().collect();
@@ -188,7 +184,7 @@ async fn update_mapfeed() -> Result<(), Error> {
                     if let Some(m) = new_map {
                         let embed = build_embed(m);
 
-                        if let Err(why) = insert_beatmap(m.id).await {
+                        if let Err(why) = insert_beatmaps(vec![m.id]).await {
                             error!(
                             "ID: {} failed to insert into database, skipping insertion. Error: {}",
                             m.id, why
@@ -204,7 +200,7 @@ async fn update_mapfeed() -> Result<(), Error> {
                     };
                     if let Some(m) = changed_map {
                         let embed = build_embed(m);
-                        match fetch_all_subscribers(m.id).await {
+                        match fetch_all_subscribers_for_beatmap(m.id).await {
                             Ok(option) => {
                                 if let Some(ids) = option {
                                     ret.push(MessageData {
@@ -421,13 +417,14 @@ async fn handle_interaction(interaction: ComponentInteraction, ctx: &ContextWrap
     let parsed = parse_custom_button_id(&interaction.data.custom_id);
     match parsed.state {
         ButtonState::Subscribe => {
-            match subscribe_to_beatmap(interaction.user.id.get() as i64, parsed.id).await {
-                Ok(status) => match status {
-                    UserAdditionStatus::UserAdded => content = "Subscribed successfully",
-                    UserAdditionStatus::UserAlreadyExists => {
-                        content = "You are already subscribed to this beatmap!"
-                    }
-                },
+            match beatmap_subscription_handler(
+                interaction.user.id.get() as i64,
+                parsed.id,
+                SubscriptionMode::Subscribe,
+            )
+            .await
+            {
+                Ok(_) => content = "Subscribed successfully",
                 Err(e) => {
                     error!(
                         "Something went wrong while subscribing to ID: {}, error: {}",
@@ -438,13 +435,14 @@ async fn handle_interaction(interaction: ComponentInteraction, ctx: &ContextWrap
             }
         }
         ButtonState::Unsubscribe => {
-            match unsubscribe_from_beatmap(interaction.user.id.get() as i64, parsed.id).await {
-                Ok(status) => match status {
-                    UserDeletionStatus::UserRemoved => content = "Unsubscribed successfully",
-                    UserDeletionStatus::UserDoesNotExist => {
-                        content = "You are not subscribed to this beatmap!"
-                    }
-                },
+            match beatmap_subscription_handler(
+                interaction.user.id.get() as i64,
+                parsed.id,
+                SubscriptionMode::Unsubscribe,
+            )
+            .await
+            {
+                Ok(_) => content = "Unsubscribed successfully",
                 Err(e) => {
                     error!(
                         "Something went wrong while unsubscribing from ID: {}, error: {}",
@@ -474,7 +472,7 @@ async fn handle_interaction(interaction: ComponentInteraction, ctx: &ContextWrap
 
 pub async fn populate() -> anyhow::Result<()> {
     info!("Populating database");
-    if fetch_all_ids().await?.is_none() {
+    if fetch_all_tracked().await?.is_none() {
         let ids = fetch_all_qualified_maps().await?;
         insert_beatmaps(ids).await?;
     };
@@ -485,24 +483,24 @@ pub async fn subscription_handler(
     subscriber: i64,
     link: &str,
     mode: SubscriptionMode,
-) -> Result<(), SubscriptionError> {
+) -> anyhow::Result<()> {
     if !OSU_LINK_REGEX.is_match(link)? {
-        return Err(SubscriptionError::InvalidLink);
+        bail!("Invalid link specified");
     }
     debug!("{:?}", OSU_LINK_REGEX.captures(link)?);
     let id = match OSU_LINK_REGEX.captures(link)? {
         Some(capture) => match capture.get(1) {
             Some(id) => id.as_str().parse::<i32>()?,
-            None => return Err(SubscriptionError::NonCapture),
+            None => bail!("Non capture"),
         },
-        None => return Err(SubscriptionError::InvalidLink),
+        None => unreachable!(),
     };
     match mode {
         SubscriptionMode::Subscribe => {
-            subscribe_to_beatmap(subscriber, id).await?;
+            beatmap_subscription_handler(subscriber, id, SubscriptionMode::Subscribe).await?;
         }
         SubscriptionMode::Unsubscribe => {
-            unsubscribe_from_beatmap(subscriber, id).await?;
+            beatmap_subscription_handler(subscriber, id, SubscriptionMode::Unsubscribe).await?;
         }
     };
 

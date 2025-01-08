@@ -1,29 +1,14 @@
-use crate::core::{get_client_from_pool, DatabaseError};
-use tokio_postgres::types::{FromSql, Type};
-
-const SUBSCRIBE_CHANNEL_TO_MAPFEED_QUERY: &str = r#"
-    INSERT INTO subscriptions (channel_id, channel_type) VALUES ($1, 'mapfeed') ON CONFLICT DO NOTHING
-"#;
-
-const UNSUBSCRIBE_CHANNEL_FROM_MAPFEED_QUERY: &str = r#"
-    DELETE FROM subscriptions WHERE channel_id = $1 AND channel_type = 'mapfeed'
-"#;
-
-const SUBSCRIBE_CHANNEL_TO_MUSIC_QUERY: &str = r#"
-    INSERT INTO subscriptions (channel_id, channel_type) VALUES ($1, 'music') ON CONFLICT DO NOTHING
-"#;
-
-const UNSUBSCRIBE_CHANNEL_FROM_MUSIC_QUERY: &str = r#"
-    DELETE FROM subscriptions WHERE channel_id = $1 AND channel_type = 'music'
-"#;
-
-const SELECT_ALL_MAPFEED_SUBSCRIBERS_QUERY: &str = r#"
-    SELECT * FROM subscriptions WHERE channel_type = 'mapfeed'
-"#;
-
-const SELECT_ALL_MUSIC_SUBSCRIBERS_QUERY: &str = r#"
-    SELECT * FROM subscriptions WHERE channel_type = 'music'
-"#;
+use crate::{
+    core::{DB, macros::get_conn},
+    models::{Beatmapsets, ChannelKind, Subscriptions},
+    schema::{
+        self, beatmapset_subscriptions::dsl::beatmapset_subscriptions,
+        beatmapsets::dsl::beatmapsets, subscriptions::dsl::subscriptions,
+    },
+};
+use anyhow::Result;
+use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel_async::RunQueryDsl;
 
 pub enum SubscriptionMode {
     Subscribe,
@@ -35,93 +20,89 @@ pub enum ChannelType {
     Music(SubscriptionMode),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum UserAdditionStatus {
-    UserAdded,
-    UserAlreadyExists,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum UserDeletionStatus {
-    UserRemoved,
-    UserDoesNotExist,
-}
-
-impl FromSql<'_> for UserAdditionStatus {
-    fn from_sql(
-        _type: &Type,
-        raw: &[u8],
-    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
-        match raw {
-            b"UserAdded" => Ok(UserAdditionStatus::UserAdded),
-            b"UserAlreadyExists" => Ok(UserAdditionStatus::UserAlreadyExists),
-            _ => Err("Unknown user addition status".into()),
-        }
-    }
-
-    fn accepts(type_: &Type) -> bool {
-        type_.name() == "user_addition_status"
-    }
-}
-
-impl FromSql<'_> for UserDeletionStatus {
-    fn from_sql(
-        _type: &Type,
-        raw: &[u8],
-    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
-        match raw {
-            b"UserRemoved" => Ok(UserDeletionStatus::UserRemoved),
-            b"UserDoesNotExist" => Ok(UserDeletionStatus::UserDoesNotExist),
-            _ => Err("Unknown user addition status".into()),
-        }
-    }
-
-    fn accepts(type_: &Type) -> bool {
-        type_.name() == "user_deletion_status"
-    }
-}
-
-pub async fn subscription_handler(
-    channel_id: i64,
-    type_: ChannelType,
-) -> Result<(), DatabaseError> {
-    let client = get_client_from_pool().await?;
-
-    let sql: &str = match type_ {
-        ChannelType::Mapfeed(kind) => match kind {
-            SubscriptionMode::Subscribe => SUBSCRIBE_CHANNEL_TO_MAPFEED_QUERY,
-            SubscriptionMode::Unsubscribe => UNSUBSCRIBE_CHANNEL_FROM_MAPFEED_QUERY,
-        },
-        ChannelType::Music(kind) => match kind {
-            SubscriptionMode::Subscribe => SUBSCRIBE_CHANNEL_TO_MUSIC_QUERY,
-            SubscriptionMode::Unsubscribe => UNSUBSCRIBE_CHANNEL_FROM_MUSIC_QUERY,
-        },
+pub async fn channel_subscription_handler(channel_id: i64, type_: ChannelType) -> Result<()> {
+    let conn = get_conn!();
+    let (kind, mode) = match type_ {
+        ChannelType::Mapfeed(mode) => (ChannelKind::Mapfeed, mode),
+        ChannelType::Music(mode) => (ChannelKind::Music, mode),
     };
-    let stmt = client.prepare_cached(sql).await?;
-    client.execute(&stmt, &[&channel_id]).await?;
+
+    match mode {
+        SubscriptionMode::Subscribe => {
+            diesel::insert_into(subscriptions)
+                .values((
+                    schema::subscriptions::channel_id.eq(channel_id),
+                    schema::subscriptions::kind.eq(kind),
+                ))
+                .execute(conn)
+                .await?
+        }
+
+        SubscriptionMode::Unsubscribe => {
+            diesel::delete(subscriptions)
+                .filter(schema::subscriptions::channel_id.eq(channel_id))
+                .filter(schema::subscriptions::kind.eq(kind))
+                .execute(conn)
+                .await?
+        }
+    };
     Ok(())
 }
 
-pub async fn fetch_all_subscribed_channels(
-    type_: ChannelType,
-) -> Result<Option<Vec<i64>>, DatabaseError> {
-    let client = get_client_from_pool().await?;
+pub async fn beatmap_subscription_handler(
+    user_id: i64,
+    beatmap_id: i32,
+    type_: SubscriptionMode,
+) -> Result<()> {
+    let conn = get_conn!();
 
-    let sql: &str = match type_ {
-        ChannelType::Mapfeed(_) => SELECT_ALL_MAPFEED_SUBSCRIBERS_QUERY,
-        ChannelType::Music(_) => SELECT_ALL_MUSIC_SUBSCRIBERS_QUERY,
-    };
-    let stmt = client.prepare_cached(sql).await?;
-
-    let channel_ids: Vec<tokio_postgres::Row> = client.query(&stmt, &[]).await?;
-    if channel_ids.is_empty() {
-        return Ok(None);
+    match type_ {
+        SubscriptionMode::Subscribe => {
+            let beatmap = beatmapsets
+                .filter(schema::beatmapsets::id.eq(&beatmap_id))
+                .select(Beatmapsets::as_select())
+                .get_result(conn)
+                .await?;
+            diesel::insert_into(beatmapset_subscriptions)
+                .values((
+                    schema::beatmapset_subscriptions::user_id.eq(&user_id),
+                    schema::beatmapset_subscriptions::beatmapset_id.eq(beatmap.id),
+                ))
+                .execute(conn)
+                .await?;
+        }
+        SubscriptionMode::Unsubscribe => {
+            diesel::delete(beatmapset_subscriptions)
+                .filter(schema::beatmapset_subscriptions::user_id.eq(&user_id))
+                .filter(schema::beatmapset_subscriptions::beatmapset_id.eq(&beatmap_id))
+                .execute(conn)
+                .await?;
+        }
     }
+    Ok(())
+}
 
-    Ok(Some(
-        channel_ids
-            .iter()
-            .map(|entry| entry.try_get("channel_id"))
-            .collect::<Result<Vec<_>, _>>()?,
-    ))
+pub async fn fetch_all_subscribed_channels(type_: ChannelType) -> Result<Option<Vec<i64>>> {
+    let conn = get_conn!();
+    let rows = match type_ {
+        ChannelType::Mapfeed(_) => {
+            subscriptions
+                .filter(schema::subscriptions::kind.eq(ChannelKind::Mapfeed))
+                .load::<Subscriptions>(conn)
+                .await?
+        }
+        ChannelType::Music(_) => {
+            subscriptions
+                .filter(schema::subscriptions::kind.eq(ChannelKind::Music))
+                .load::<Subscriptions>(conn)
+                .await?
+        }
+    };
+
+    if !rows.is_empty() {
+        return Ok(Some(
+            rows.iter().map(|r| r.channel_id).collect::<Vec<i64>>(),
+        ));
+    }
+    Ok(None)
 }

@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use sysinfo::{
-    CpuRefreshKind, MemoryRefreshKind, RefreshKind, System, MINIMUM_CPU_UPDATE_INTERVAL,
+    CpuRefreshKind, MINIMUM_CPU_UPDATE_INTERVAL, MemoryRefreshKind, RefreshKind, System,
 };
 use tokio::sync::Mutex;
 

@@ -1,152 +1,75 @@
 use crate::{
-    core::{get_client_from_pool, DatabaseError},
-    subscriptions::{UserAdditionStatus, UserDeletionStatus},
+    core::{DB, macros::get_conn},
+    models::{BeatmapsetSubscriptions, Beatmapsets},
+    schema::{
+        self, beatmapset_subscriptions::dsl::beatmapset_subscriptions,
+        beatmapsets::dsl::beatmapsets,
+    },
 };
-use log::debug;
+use anyhow::Result;
+use diesel::{BelongingToDsl, ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel_async::RunQueryDsl;
 
-const INSERTION_QUERY: &str = r#"
-    INSERT INTO beatmapsets (beatmapset_id) VALUES ($1) ON CONFLICT DO NOTHING
-"#;
-
-const DELETION_QUERY: &str = r#"
-    DELETE FROM beatmapsets WHERE beatmapset_id = $1
-"#;
-
-const INSERT_NEW_BEATMAP_SUBSCRIBER_QUERY: &str = r#"
-    SELECT add_user_id_to_subscribed_users($1, $2)
-"#;
-
-const REMOVE_BEATMAP_SUBSCRIBER_QUERY: &str = r#"
-    SELECT remove_user_id_from_subscribed_users($1, $2)
-"#;
-
-const SELECT_ALL_QUERY: &str = r#"
-    SELECT * FROM beatmapsets
-"#;
-
-const SELECT_ALL_SUBSCRIBERS_QUERY: &str = r#"
-    SELECT subscribed_user_ids FROM beatmapsets WHERE beatmapset_id = $1
-"#;
-
-const SELECT_ALL_SUBSCRIBED_FOR_USER_ID: &str = r#"
-    SELECT beatmapset_id FROM beatmapsets WHERE $1 = ANY(subscribed_user_ids)
-"#;
-
-pub async fn insert_beatmap(id: i32) -> Result<(), DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(INSERTION_QUERY).await?;
-    client.execute(&stmt, &[&id]).await?;
-
-    Ok(())
-}
-
-pub async fn insert_beatmaps(ids: Vec<i32>) -> Result<(), DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(INSERTION_QUERY).await?;
-
-    for id in ids {
-        client.execute(&stmt, &[&id]).await?;
-        debug!("Inserted Id {} successfully.", id);
-    }
-    Ok(())
-}
-
-pub async fn delete_beatmap(id: i32) -> Result<(), DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(DELETION_QUERY).await?;
-    client.execute(&stmt, &[&id]).await?;
-
-    Ok(())
-}
-
-pub async fn subscribe_to_beatmap(
-    user_id: i64,
-    beatmap_id: i32,
-) -> Result<UserAdditionStatus, DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client
-        .prepare_cached(INSERT_NEW_BEATMAP_SUBSCRIBER_QUERY)
-        .await?;
-
-    let rows = client.query(&stmt, &[&user_id, &beatmap_id]).await?;
-    if let Some(row) = rows.first() {
-        let status: UserAdditionStatus = row.get(0);
-        Ok(status)
-    } else {
-        Err(DatabaseError::UnexpectedResult)
-    }
-}
-
-pub async fn unsubscribe_from_beatmap(
-    user_id: i64,
-    beatmap_id: i32,
-) -> Result<UserDeletionStatus, DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client
-        .prepare_cached(REMOVE_BEATMAP_SUBSCRIBER_QUERY)
-        .await?;
-
-    let rows = client.query(&stmt, &[&user_id, &beatmap_id]).await?;
-    if let Some(row) = rows.first() {
-        let status: UserDeletionStatus = row.get(0);
-        Ok(status)
-    } else {
-        Err(DatabaseError::UnexpectedResult)
-    }
-}
-
-pub async fn fetch_all_ids() -> Result<Option<Vec<i32>>, DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(SELECT_ALL_QUERY).await?;
-
-    let rows = client.query(&stmt, &[]).await?;
-    if rows.is_empty() {
-        return Ok(None);
-    }
-
-    let mut return_vec: Vec<i32> = Vec::new();
-    for entry in rows {
-        return_vec.push(entry.try_get("beatmapset_id")?);
-    }
-
-    Ok(Some(return_vec))
-}
-
-pub async fn fetch_all_subscribers(primary_key: i32) -> Result<Option<Vec<i64>>, DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client.prepare_cached(SELECT_ALL_SUBSCRIBERS_QUERY).await?;
-
-    let row = client.query_opt(&stmt, &[&primary_key]).await?;
-
-    match row {
-        Some(row) => {
-            if let Some(ids) = row.get(0) {
-                Ok(Some(ids))
-            } else {
-                Ok(None)
-            }
-        }
-        None => Ok(None),
-    }
-}
-
-pub async fn fetch_all_subscribed_beatmaps_for_id(
-    user_id: i64,
-) -> Result<Option<Vec<i32>>, DatabaseError> {
-    let client = get_client_from_pool().await?;
-    let stmt = client
-        .prepare_cached(SELECT_ALL_SUBSCRIBED_FOR_USER_ID)
-        .await?;
-
-    let rows = client.query(&stmt, &[&user_id]).await?;
-    if rows.is_empty() {
-        return Ok(None);
-    }
-
-    let return_vec: Vec<i32> = rows
+pub async fn insert_beatmaps(ids: Vec<i32>) -> Result<()> {
+    let ids = ids
         .iter()
-        .map(|r| r.try_get("beatmapset_id"))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|i| schema::beatmapsets::id.eq(*i))
+        .collect::<Vec<_>>();
 
-    Ok(Some(return_vec))
+    diesel::insert_into(beatmapsets)
+        .values(ids)
+        .execute(get_conn!())
+        .await?;
+    Ok(())
+}
+
+pub async fn delete_beatmap(beatmapset_id: i32) -> Result<()> {
+    diesel::delete(beatmapsets.filter(schema::beatmapsets::id.eq(&beatmapset_id)))
+        .execute(get_conn!())
+        .await?;
+    Ok(())
+}
+
+pub async fn fetch_all_tracked() -> Result<Option<Vec<i32>>> {
+    let rows = beatmapsets.load::<Beatmapsets>(get_conn!()).await?;
+
+    if !rows.is_empty() {
+        return Ok(Some(rows.iter().map(|b| b.id).collect::<Vec<_>>()));
+    }
+    Ok(None)
+}
+
+pub async fn fetch_all_subscribers_for_beatmap(beatmapset_id: i32) -> Result<Option<Vec<i64>>> {
+    let beatmap = beatmapsets
+        .filter(schema::beatmapsets::id.eq(&beatmapset_id))
+        .select(Beatmapsets::as_select())
+        .get_result(get_conn!())
+        .await?;
+
+    let subscribers = BeatmapsetSubscriptions::belonging_to(&beatmap)
+        .select(BeatmapsetSubscriptions::as_select())
+        .load(get_conn!())
+        .await?;
+
+    if !subscribers.is_empty() {
+        return Ok(Some(
+            subscribers.iter().map(|s| s.user_id).collect::<Vec<_>>(),
+        ));
+    }
+    Ok(None)
+}
+
+pub async fn fetch_all_subscriptions_for_user(user_id: i64) -> Result<Option<Vec<i32>>> {
+    let beatmaps = beatmapset_subscriptions
+        .filter(schema::beatmapset_subscriptions::user_id.eq(&user_id))
+        .select(BeatmapsetSubscriptions::as_select())
+        .load(get_conn!())
+        .await?;
+
+    if !beatmaps.is_empty() {
+        return Ok(Some(
+            beatmaps.iter().map(|b| b.beatmapset_id).collect::<Vec<_>>(),
+        ));
+    }
+    Ok(None)
 }

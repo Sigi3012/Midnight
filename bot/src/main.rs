@@ -1,5 +1,4 @@
 use common::context::set_context_wrapper;
-use database::core::initialize_database;
 use poise::serenity_prelude as serenity;
 use std::process::exit;
 use tokio::time::Instant;
@@ -33,13 +32,13 @@ async fn main() {
         exit(1);
     });
 
-    info!("Logger and enviroment variables initalised");
+    info!("Logger and environment variables initalised");
 
-    match initialize_database().await {
-        Ok(_) => info!("Database initalized"),
+    match database::core::initialise().await {
+        Ok(_) => info!("Database initialised"),
         Err(e) => {
             error!(
-                "Fatal! Something went wrong initalizing the database, {}",
+                "Fatal! Something went wrong initialising the database, {}",
                 e
             );
             return;
@@ -98,7 +97,7 @@ async fn main() {
     tokio::spawn(async move {
         wait_until_shutdown().await;
 
-        warn!("Recieved Ctrl+C, closing shards..");
+        warn!("Received Ctrl+C, closing shards..");
         shard_manager.shutdown_all().await;
         info!("All shards closed");
     });

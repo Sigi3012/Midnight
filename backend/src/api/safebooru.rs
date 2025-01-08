@@ -1,6 +1,6 @@
-use crate::{api::TWITTER_REGEX, REQWEST_CLIENT};
+use crate::{REQWEST_CLIENT, api::TWITTER_REGEX};
 use log::{debug, info};
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use serde::Deserialize;
 use thiserror::Error;
 

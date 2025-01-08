@@ -1,6 +1,6 @@
 use ::serenity::all::{
-    model::channel::MessageFlags, ChannelId, CreateInteractionResponseMessage, CreateMessage,
-    EditMessage,
+    ChannelId, CreateInteractionResponseMessage, CreateMessage, EditMessage,
+    model::channel::MessageFlags,
 };
 use common::context::get_context_wrapper;
 use fancy_regex::Regex;
@@ -99,11 +99,11 @@ pub async fn message_handler(
     reply_target: &serenity::Message,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ctx = get_context_wrapper();
-    let components = serenity::CreateActionRow::Buttons(vec![serenity::CreateButton::new(
-        format!("{}", message_owner),
-    )
-    .emoji(serenity::ReactionType::Unicode("\u{1F5D1}".to_string()))
-    .style(serenity::ButtonStyle::Danger)]);
+    let components = serenity::CreateActionRow::Buttons(vec![
+        serenity::CreateButton::new(format!("{}", message_owner))
+            .emoji(serenity::ReactionType::Unicode("\u{1F5D1}".to_string()))
+            .style(serenity::ButtonStyle::Danger),
+    ]);
     let builder = CreateMessage::new()
         .content(format!("<@{}>: {}", message_owner, message_content))
         .components(vec![components])
@@ -216,7 +216,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_links() {
-        let test_message = setup_test_message("https://x.com/testaccount/status/1814183041708990884, https://twitter.com/testaccount/status/1814183041708990884");
+        let test_message = setup_test_message(
+            "https://x.com/testaccount/status/1814183041708990884, https://twitter.com/testaccount/status/1814183041708990884",
+        );
         let result = fix_links(&test_message).await;
         assert!(result.is_ok());
         assert_eq!(

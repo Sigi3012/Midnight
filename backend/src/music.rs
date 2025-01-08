@@ -1,4 +1,4 @@
-use database::subscriptions::{fetch_all_subscribed_channels, ChannelType, SubscriptionMode};
+use database::subscriptions::{ChannelType, SubscriptionMode, fetch_all_subscribed_channels};
 use fancy_regex::Regex;
 use log::{error, info, warn};
 use serenity::all::Message;
@@ -11,7 +11,7 @@ use thiserror::Error;
 use tokio::{
     sync::{Mutex, OnceCell},
     task::{self, JoinError},
-    time::{self, error::Elapsed, Duration},
+    time::{self, Duration, error::Elapsed},
 };
 
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;

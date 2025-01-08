@@ -1,9 +1,8 @@
 use crate::{Context, Data, Error};
 use common::sys::SYSTEM;
-use database::core::ping_database;
 use poise::{
-    serenity_prelude::{Colour, CreateEmbed},
     CreateReply,
+    serenity_prelude::{Colour, CreateEmbed},
 };
 use tokio::time::Instant;
 use tracing::error;
@@ -56,13 +55,6 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
     let bot_latency = start.elapsed().as_millis();
     let shard_latency = ctx.ping().await.as_millis();
-    let database_latency = match ping_database().await {
-        Ok(duration) => duration.as_millis(),
-        Err(e) => {
-            error!("{}", e);
-            return Ok(());
-        }
-    };
 
     let (
         system_cpu_usage,
@@ -98,10 +90,8 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
                 "**Shard Latency:** `{}ms`\n\
                              The time it takes for Discord to ping the shard.\n\
                              **Response/API Latency:** `{}ms`\n\
-                             The time it takes for me to ping Discord.\n\
-                             **Database Latency:** `{}ms`\n\
-                             The time it take for me to ping my database.",
-                shard_latency, bot_latency, database_latency
+                             The time it takes for me to ping Discord.",
+                shard_latency, bot_latency
             ),
             false,
         ),

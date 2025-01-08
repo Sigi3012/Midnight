@@ -1,10 +1,10 @@
 use backend::{
     api::osu::AuthenticationManager,
-    mapfeed::{populate, MapfeedManager},
+    mapfeed::{MapfeedManager, populate},
 };
 use log::{info, warn};
 use once_cell::sync::OnceCell;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 static INITALIZED: OnceCell<()> = OnceCell::new();
 const THREE_SECONDS_DURATION: Duration = Duration::new(3, 0);

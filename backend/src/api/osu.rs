@@ -1,19 +1,19 @@
 use crate::{
+    REQWEST_CLIENT,
     api::{
         types::{Beatmapset, SearchResponse},
         {ACCESS_TOKEN, OSU_API_SECRET, OSU_CLIENT_ID},
     },
-    REQWEST_CLIENT,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use futures::stream::{self, StreamExt};
 use log::{debug, info};
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap};
 use serde::Deserialize;
 use smallvec::SmallVec;
 use tokio::{
     task,
-    time::{sleep, Duration},
+    time::{Duration, sleep},
 };
 
 pub type BeatmapsetVec = SmallVec<[Beatmapset; 8]>;

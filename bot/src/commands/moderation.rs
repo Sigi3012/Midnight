@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 use backend::music;
-use database::subscriptions::{subscription_handler, ChannelType, SubscriptionMode};
+use database::subscriptions::{ChannelType, SubscriptionMode, channel_subscription_handler};
 use log::info;
 use poise::{reply::CreateReply, serenity_prelude::Mentionable};
 
@@ -27,7 +27,7 @@ pub async fn music(_: Context<'_>) -> Result<(), Error> {
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn mapfeed_subscribe(ctx: Context<'_>) -> Result<(), Error> {
-    subscription_handler(
+    channel_subscription_handler(
         ctx.channel_id().get() as i64,
         ChannelType::Mapfeed(SubscriptionMode::Subscribe),
     )
@@ -55,7 +55,7 @@ pub async fn mapfeed_subscribe(ctx: Context<'_>) -> Result<(), Error> {
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn mapfeed_unsubscribe(ctx: Context<'_>) -> Result<(), Error> {
-    subscription_handler(
+    channel_subscription_handler(
         ctx.channel_id().get() as i64,
         ChannelType::Mapfeed(SubscriptionMode::Unsubscribe),
     )
@@ -83,7 +83,7 @@ pub async fn mapfeed_unsubscribe(ctx: Context<'_>) -> Result<(), Error> {
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn music_subscribe(ctx: Context<'_>) -> Result<(), Error> {
-    subscription_handler(
+    channel_subscription_handler(
         ctx.channel_id().get() as i64,
         ChannelType::Music(SubscriptionMode::Subscribe),
     )
@@ -113,7 +113,7 @@ pub async fn music_subscribe(ctx: Context<'_>) -> Result<(), Error> {
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn music_unsubscribe(ctx: Context<'_>) -> Result<(), Error> {
-    subscription_handler(
+    channel_subscription_handler(
         ctx.channel_id().get() as i64,
         ChannelType::Music(SubscriptionMode::Unsubscribe),
     )

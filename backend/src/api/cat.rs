@@ -1,4 +1,4 @@
-use crate::{api::CAT_API_SECRET, REQWEST_CLIENT};
+use crate::{REQWEST_CLIENT, api::CAT_API_SECRET};
 use log::info;
 use reqwest::header::{HeaderMap, HeaderName};
 use serde::{Deserialize, Deserializer};

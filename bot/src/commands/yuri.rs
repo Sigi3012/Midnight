@@ -1,7 +1,7 @@
 use crate::{Context, Error};
 use backend::api::safebooru::get_random_post;
 use log::{error, info};
-use poise::{serenity_prelude as serenity, CreateReply};
+use poise::{CreateReply, serenity_prelude as serenity};
 
 async fn handle_message_creation(
     ctx: Context<'_>,

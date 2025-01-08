@@ -1,7 +1,7 @@
 use crate::{Data, Error};
 use backend::{
     links,
-    music::{music_link_handler, DownloadError},
+    music::{DownloadError, music_link_handler},
 };
 use log::{error, info, warn};
 use poise::serenity_prelude::{

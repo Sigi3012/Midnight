@@ -3,7 +3,7 @@ use backend::{
     api::osu::fetch_beatmaps,
     mapfeed::{create_reply_with_sorted_beatmaps, subscription_handler},
 };
-use database::{mapfeed::fetch_all_subscribed_beatmaps_for_id, subscriptions::SubscriptionMode};
+use database::{mapfeed::fetch_all_subscriptions_for_user, subscriptions::SubscriptionMode};
 use log::{error, info};
 use poise::CreateReply;
 
@@ -97,7 +97,7 @@ pub async fn unsubscribe(
 #[poise::command(slash_command, category = "Mapfeed")]
 pub async fn view_subscribed(ctx: Context<'_>) -> Result<(), Error> {
     let builder: CreateReply;
-    match fetch_all_subscribed_beatmaps_for_id(ctx.author().id.get() as i64).await? {
+    match fetch_all_subscriptions_for_user(ctx.author().id.get() as i64).await? {
         Some(ids) => match fetch_beatmaps(ids).await {
             Ok(beatmaps) => builder = create_reply_with_sorted_beatmaps(beatmaps),
             Err(e) => {
