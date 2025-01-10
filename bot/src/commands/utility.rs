@@ -5,7 +5,6 @@ use poise::{
     serenity_prelude::{Colour, CreateEmbed},
 };
 use tokio::time::Instant;
-use tracing::error;
 
 const KILOBYTE: u64 = 1024;
 const MEGABYTE: u64 = KILOBYTE * 1024;

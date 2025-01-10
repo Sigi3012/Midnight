@@ -57,6 +57,7 @@ async fn main() {
             commands::moderation::_mod(),
             commands::utility::status(),
             commands::cat::cat(),
+            commands::sticky::sticky(),
         ],
 
         event_handler: |ctx, event, framework, data| {

@@ -1,5 +1,6 @@
 pub mod core;
 pub mod mapfeed;
-mod models;
+pub mod models;
 mod schema;
+pub mod sticky;
 pub mod subscriptions;

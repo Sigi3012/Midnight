@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use crate::schema::{beatmapset_subscriptions, beatmapsets, subscriptions};
+use crate::schema::{beatmapset_subscriptions, beatmapsets, sticky_messages, subscriptions};
 use diesel::{
-    AsExpression, Associations, FromSqlRow, Identifiable, Queryable, Selectable,
+    AsExpression, Associations, FromSqlRow, Identifiable, Insertable, Queryable, Selectable,
     deserialize::{self, FromSql},
     pg::{Pg, PgValue},
     serialize::{IsNull, Output, ToSql},
@@ -59,4 +59,24 @@ pub struct BeatmapsetSubscriptions {
 pub struct Subscriptions {
     pub channel_id: i64,
     pub kind: ChannelKind,
+}
+
+#[derive(Debug, Queryable, Selectable)]
+#[diesel(table_name = sticky_messages)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct StickyMessages {
+    pub id: i32,
+    pub channel_id: i64,
+    pub orig_message_id: i64,
+    pub bot_message_id: i64,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = sticky_messages)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+#[derive(Debug)]
+pub struct NewStickyMessage {
+    pub channel_id: i64,
+    pub orig_message_id: i64,
+    pub bot_message_id: i64,
 }

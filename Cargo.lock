@@ -441,6 +441,8 @@ dependencies = [
  "diesel",
  "diesel-async",
  "diesel_migrations",
+ "futures",
+ "smallvec",
  "tokio",
  "tracing",
 ]

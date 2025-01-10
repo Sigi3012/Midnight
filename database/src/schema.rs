@@ -21,6 +21,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    sticky_messages (id) {
+        id -> Int4,
+        channel_id -> Int8,
+        orig_message_id -> Int8,
+        bot_message_id -> Int8,
+    }
+}
+
+diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::ChannelKind;
 
@@ -32,4 +41,9 @@ diesel::table! {
 
 diesel::joinable!(beatmapset_subscriptions -> beatmapsets (beatmapset_id));
 
-diesel::allow_tables_to_appear_in_same_query!(beatmapset_subscriptions, beatmapsets, subscriptions,);
+diesel::allow_tables_to_appear_in_same_query!(
+    beatmapset_subscriptions,
+    beatmapsets,
+    sticky_messages,
+    subscriptions,
+);
