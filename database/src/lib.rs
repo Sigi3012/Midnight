@@ -1,4 +1,5 @@
 pub mod core;
+pub mod groups;
 pub mod mapfeed;
 pub mod models;
 mod schema;

@@ -12,6 +12,11 @@ futures.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 smallvec.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+serde_json.workspace = true
 
 [lints]
 workspace = true
