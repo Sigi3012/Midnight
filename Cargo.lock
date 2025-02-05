@@ -94,6 +94,7 @@ dependencies = [
  "lazy_static",
  "log",
  "poise",
+ "pretty_assertions",
  "rand",
  "reqwest 0.12.4",
  "serde",
