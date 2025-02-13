@@ -75,8 +75,8 @@ async fn main() {
         .options(framework_options)
         .setup(move |ctx, _ready, _framework| {
             Box::pin(async move {
-                tasks::init_tasks().await;
                 set_context_wrapper(ctx.shard.clone(), ctx.http.clone(), ctx.cache.clone());
+                tasks::init_tasks().await;
 
                 Ok(Data {
                     startup_time: Instant::now(),

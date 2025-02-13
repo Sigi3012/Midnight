@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::schema::{
     beatmapset_subscriptions, beatmapsets, osu_user_group_gamemodes, osu_user_groups, osu_users,
     sticky_messages, subscriptions,
@@ -11,7 +9,10 @@ use diesel::{
     serialize::{IsNull, Output, ToSql},
 };
 use serde::Deserialize;
-use std::io::Write;
+use std::{
+    fmt::{Display, Formatter},
+    io::Write,
+};
 
 #[derive(Debug, AsExpression, FromSqlRow)]
 #[diesel(sql_type = crate::schema::sql_types::ChannelKind)]
@@ -53,6 +54,8 @@ pub enum OsuGroup {
     ProbationaryBeatmapNominator,
     #[serde(rename = "nat")]
     NominationAssessmentTeam,
+    #[serde(rename = "tc")]
+    TournamentCommittee,
     #[serde(rename = "gmt")]
     GlobalModerationTeam,
     #[serde(rename = "dev")]
@@ -63,6 +66,10 @@ pub enum OsuGroup {
     BeatmapSpotlightCurator,
     #[serde(rename = "loved")]
     ProjectLoved,
+    #[serde(rename = "support")]
+    TechnicalSupportTeam,
+    Ppy,
+    Bot,
     Alumni,
 }
 
@@ -75,10 +82,14 @@ impl ToSql<crate::schema::sql_types::OsuGroup, Pg> for OsuGroup {
             }
             OsuGroup::NominationAssessmentTeam => out.write_all(b"NominationAssessmentTeam")?,
             OsuGroup::GlobalModerationTeam => out.write_all(b"GlobalModerationTeam")?,
+            OsuGroup::TournamentCommittee => out.write_all(b"TournamentCommittee")?,
             OsuGroup::Developer => out.write_all(b"Developer")?,
             OsuGroup::FeatureArtist => out.write_all(b"FeatureArtist")?,
             OsuGroup::BeatmapSpotlightCurator => out.write_all(b"BeatmapSpotlightCurator")?,
             OsuGroup::ProjectLoved => out.write_all(b"ProjectLoved")?,
+            OsuGroup::TechnicalSupportTeam => out.write_all(b"TechnicalSupportTeam")?,
+            OsuGroup::Ppy => out.write_all(b"Ppy")?,
+            OsuGroup::Bot => out.write_all(b"Bot")?,
             OsuGroup::Alumni => out.write_all(b"Alumni")?,
         }
         Ok(IsNull::No)
@@ -92,11 +103,54 @@ impl FromSql<crate::schema::sql_types::OsuGroup, Pg> for OsuGroup {
             b"ProbationaryBeatmapNominator" => Ok(OsuGroup::ProbationaryBeatmapNominator),
             b"NominationAssessmentTeam" => Ok(OsuGroup::NominationAssessmentTeam),
             b"GlobalModerationTeam" => Ok(OsuGroup::GlobalModerationTeam),
+            b"TournamentCommittee" => Ok(OsuGroup::TournamentCommittee),
             b"Developer" => Ok(OsuGroup::Developer),
             b"FeatureArtist" => Ok(OsuGroup::FeatureArtist),
             b"BeatmapSpotlightCurator" => Ok(OsuGroup::BeatmapSpotlightCurator),
             b"ProjectLoved" => Ok(OsuGroup::ProjectLoved),
             _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl Display for OsuGroup {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            OsuGroup::BeatmapNominator => write!(f, "Beatmap Nominators"),
+            OsuGroup::ProbationaryBeatmapNominator => write!(f, "Probationary Beatmap Nominators"),
+            OsuGroup::NominationAssessmentTeam => write!(f, "Nomination Assessment Team"),
+            OsuGroup::GlobalModerationTeam => write!(f, "Global Moderation Team"),
+            OsuGroup::TournamentCommittee => write!(f, "Tournament Committee"),
+            OsuGroup::Developer => write!(f, "Developers"),
+            OsuGroup::FeatureArtist => write!(f, "Feature Artists"),
+            OsuGroup::BeatmapSpotlightCurator => write!(f, "Beatmap Spotlight Curators"),
+            OsuGroup::ProjectLoved => write!(f, "Project Loved"),
+            OsuGroup::TechnicalSupportTeam => write!(f, "Technical Support Team"),
+            OsuGroup::Ppy => write!(f, "ppy"),
+            OsuGroup::Bot => write!(f, "Bot"),
+            OsuGroup::Alumni => write!(f, "Alumni"),
+        }
+    }
+}
+
+impl OsuGroup {
+    pub fn id(&self) -> u8 {
+        match *self {
+            OsuGroup::BeatmapNominator => 28,
+            OsuGroup::ProbationaryBeatmapNominator => 32,
+            OsuGroup::NominationAssessmentTeam => 7,
+            OsuGroup::GlobalModerationTeam => 4,
+            OsuGroup::TournamentCommittee => 50,
+            OsuGroup::Developer => 11,
+            OsuGroup::FeatureArtist => 35,
+            OsuGroup::BeatmapSpotlightCurator => 48,
+            OsuGroup::ProjectLoved => 31,
+            OsuGroup::TechnicalSupportTeam => 22,
+            // This guy...
+            OsuGroup::Ppy => 33,
+            // This isn't actually displayed on the website for some reason so scraping it will error but that's fine as it won't be tracked anyway
+            OsuGroup::Bot => 29,
+            OsuGroup::Alumni => 16,
         }
     }
 }
@@ -131,6 +185,17 @@ impl FromSql<crate::schema::sql_types::OsuGamemode, Pg> for OsuGamemode {
             b"Taiko" => Ok(OsuGamemode::Taiko),
             b"Fruits" => Ok(OsuGamemode::Fruits),
             _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl Display for OsuGamemode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            OsuGamemode::Osu => write!(f, "osu!Standard"),
+            OsuGamemode::Mania => write!(f, "osu!Mania"),
+            OsuGamemode::Taiko => write!(f, "osu!Taiko"),
+            OsuGamemode::Fruits => write!(f, "osu!Catch"),
         }
     }
 }

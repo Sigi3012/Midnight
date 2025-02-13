@@ -18,7 +18,7 @@ use tokio::{
 
 pub type BeatmapsetVec = SmallVec<[Beatmapset; 8]>;
 
-const MAX_CONCURENT_REQUESTS: usize = 16;
+const MAX_CONCURRENT_REQUESTS: usize = 16;
 
 const BASE_API_URL: &str = "https://osu.ppy.sh/api/v2";
 const GRANT_URL: &str = "https://osu.ppy.sh/oauth/token";
@@ -155,7 +155,7 @@ pub async fn fetch_beatmaps(ids: Vec<i32>) -> Result<BeatmapsetVec> {
 
     let beatmaps: BeatmapsetVec = stream::iter(ids.into_iter())
         .map(|id| fetch_beatmap(id, &client, headers.clone()))
-        .buffer_unordered(MAX_CONCURENT_REQUESTS)
+        .buffer_unordered(MAX_CONCURRENT_REQUESTS)
         .filter_map(|result| futures::future::ready(result.ok()))
         .collect()
         .await;

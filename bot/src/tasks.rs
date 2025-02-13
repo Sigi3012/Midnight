@@ -1,22 +1,23 @@
 use backend::{
     api::osu::AuthenticationManager,
+    groups::GroupManager,
     mapfeed::{MapfeedManager, populate},
 };
 use log::{info, warn};
 use once_cell::sync::OnceCell;
 use tokio::time::{Duration, sleep};
 
-static INITALIZED: OnceCell<()> = OnceCell::new();
+static INITIALIZED: OnceCell<()> = OnceCell::new();
 const THREE_SECONDS_DURATION: Duration = Duration::new(3, 0);
 
 pub async fn init_tasks() {
-    if INITALIZED.get().is_some() {
-        warn!("Tasks have already been initalized");
+    if INITIALIZED.get().is_some() {
+        warn!("Tasks have already been initialised");
         return;
     } else {
-        INITALIZED
+        INITIALIZED
             .set(())
-            .expect("Failed to set background task status to initalized")
+            .expect("Failed to set background task status to initialised")
     }
 
     // TODO Ability to manage if the loop is running or not
@@ -32,5 +33,7 @@ pub async fn init_tasks() {
     }
 
     MapfeedManager::start().await;
-    info!("Initalized task manager");
+    GroupManager::new();
+
+    info!("Initialized task manager");
 }

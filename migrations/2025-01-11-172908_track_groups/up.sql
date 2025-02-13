@@ -8,6 +8,7 @@ CREATE TYPE osu_group AS ENUM (
     'FeatureArtist',
     'BeatmapSpotlightCurator',
     'ProjectLoved',
+    'TournamentCommittee',
     'Alumni'
     );
 

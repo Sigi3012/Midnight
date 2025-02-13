@@ -1,3 +1,5 @@
+#![feature(duration_constructors)]
+
 use reqwest::Client;
 
 #[macro_use]
@@ -8,6 +10,7 @@ lazy_static! {
 }
 
 pub mod api;
+pub mod groups;
 pub mod links;
 pub mod mapfeed;
 pub mod music;

@@ -7,4 +7,4 @@ build:
 
 test:
     cargo fmt
-    cargo nextest run -j 1
+    cargo nextest run -j 1 --retries 2

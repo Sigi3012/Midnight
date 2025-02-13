@@ -1,60 +1,52 @@
-use crate::models::{OsuGamemode, OsuUserGroupGamemodes, OsuUsers};
-use crate::schema::osu_user_group_gamemodes::dsl::osu_user_group_gamemodes;
 use crate::{
     core::{DB, macros::get_conn},
-    models::{OsuGroup, OsuUserGroups},
-    schema::{self, osu_user_groups::dsl::osu_user_groups, osu_users::dsl::osu_users},
+    models::{OsuGamemode, OsuGroup, OsuUserGroupGamemodes, OsuUserGroups, OsuUsers},
+    schema::{
+        self, osu_user_group_gamemodes::dsl::osu_user_group_gamemodes,
+        osu_user_groups::dsl::osu_user_groups, osu_users::dsl::osu_users,
+    },
 };
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use diesel::{BelongingToDsl, ExpressionMethods, OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use futures::future;
 use serde::Deserialize;
+use smallvec::SmallVec;
 use std::collections::HashSet;
-use tracing::warn;
+use tracing::{info, instrument, warn};
 
-// TODO move to backend
+type MemberOfDeserializeInner = Vec<(OsuGroup, SmallVec<[OsuGamemode; 4]>)>;
+
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Deserialize)]
 pub struct OsuUser {
     pub id: i32,
     pub username: String,
     pub avatar_url: String,
     #[serde(rename = "groups", deserialize_with = "deserialize_member_of")]
-    pub member_of: Vec<(OsuGroup, Vec<OsuGamemode>)>,
+    pub member_of: Vec<(OsuGroup, SmallVec<[OsuGamemode; 4]>)>,
 }
 
-// Having to duplicate this struct is icky but no other way around it
 #[derive(Debug, PartialEq, Eq)]
 pub struct GamemodeUpdate {
-    group: OsuGroup,
-    added: Vec<OsuGamemode>,
-    removed: Vec<OsuGamemode>,
+    pub group: OsuGroup,
+    pub added: SmallVec<[OsuGamemode; 4]>,
+    pub removed: SmallVec<[OsuGamemode; 4]>,
 }
 
-fn deserialize_member_of<'de, D>(
-    deserializer: D,
-) -> std::result::Result<Vec<(OsuGroup, Vec<OsuGamemode>)>, D::Error>
+fn deserialize_member_of<'de, D>(deserializer: D) -> Result<MemberOfDeserializeInner, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     #[derive(Deserialize, Debug)]
     struct Group {
-        // TODO
-        // The "alumni" group has `null` as the playmodes hence for the `Option<T>` remove this and deserialize to just a vec
-        // The `OsuGroup` struct should use
         identifier: OsuGroup,
-        playmodes: Option<Vec<OsuGamemode>>,
+        playmodes: Option<SmallVec<[OsuGamemode; 4]>>,
     }
 
     let member_of: Vec<Group> = Vec::deserialize(deserializer)?;
     Ok(member_of
-        .iter()
-        .map(|group| {
-            (
-                group.identifier,
-                group.playmodes.clone().unwrap_or_default(),
-            )
-        })
+        .into_iter()
+        .map(|group| (group.identifier, group.playmodes.unwrap_or_default()))
         .collect())
 }
 
@@ -81,7 +73,7 @@ pub async fn fetch_all_group_members(group: OsuGroup) -> Result<HashSet<OsuUser>
             .await?
             .iter()
             .map(|e| e.gamemode)
-            .collect::<Vec<_>>();
+            .collect::<SmallVec<_>>();
 
         ret.insert(OsuUser {
             id: user.id,
@@ -94,13 +86,9 @@ pub async fn fetch_all_group_members(group: OsuGroup) -> Result<HashSet<OsuUser>
     Ok(ret)
 }
 
-pub async fn insert_group_member(
-    user: &OsuUsers,
-    group: OsuGroup,
-    gamemodes: Vec<OsuGamemode>,
-) -> Result<()> {
+pub async fn insert_group_member(user: &OsuUser, group: OsuGroup) -> Result<()> {
     let conn = get_conn!();
-    let user = match osu_users
+    let user_obj = match osu_users
         .filter(schema::osu_users::dsl::id.eq(user.id))
         .first::<OsuUsers>(conn)
         .await
@@ -109,19 +97,23 @@ pub async fn insert_group_member(
         Some(u) => u,
         None => {
             diesel::insert_into(osu_users)
-                .values(user)
+                .values((
+                    schema::osu_users::dsl::id.eq(&user.id),
+                    schema::osu_users::dsl::username.eq(&user.username),
+                    schema::osu_users::dsl::avatar_url.eq(&user.avatar_url),
+                ))
                 .get_result::<OsuUsers>(conn)
                 .await?
         }
     };
 
     if (osu_user_groups
-        .filter(schema::osu_user_groups::user_id.eq(user.id))
+        .filter(schema::osu_user_groups::user_id.eq(user_obj.id))
         .filter(schema::osu_user_groups::member_of.eq(group))
         .first::<OsuUserGroups>(conn)
         .await
         .optional()?)
-        .is_some()
+    .is_some()
     {
         warn!("User is already a member of {group:?} skipping insertion");
         return Ok(());
@@ -129,18 +121,22 @@ pub async fn insert_group_member(
 
     let id: i32 = diesel::insert_into(osu_user_groups)
         .values((
-            schema::osu_user_groups::dsl::user_id.eq(user.id),
+            schema::osu_user_groups::dsl::user_id.eq(user_obj.id),
             schema::osu_user_groups::dsl::member_of.eq(group),
         ))
         .get_results::<OsuUserGroups>(conn)
         .await?
         .into_iter()
         .next()
-        // TODO remove this
-        .unwrap()
+        .ok_or_else(|| anyhow!("Missing struct"))?
         .id;
 
-    for gamemode in gamemodes {
+    for gamemode in user
+        .member_of
+        .iter()
+        .filter(|i| i.0 == group)
+        .flat_map(|j| j.1.iter())
+    {
         diesel::insert_into(osu_user_group_gamemodes)
             .values((
                 schema::osu_user_group_gamemodes::dsl::user_group_id.eq(&id),
@@ -153,7 +149,7 @@ pub async fn insert_group_member(
     Ok(())
 }
 
-pub async fn update_group_member_gamemodes(user_id: i32, diff: GamemodeUpdate) -> Result<()> {
+pub async fn update_group_member_gamemodes(user_id: i32, diff: &GamemodeUpdate) -> Result<()> {
     let conn = get_conn!();
 
     let user_group = osu_user_groups
@@ -175,7 +171,7 @@ pub async fn update_group_member_gamemodes(user_id: i32, diff: GamemodeUpdate) -
             ))
             .execute(conn)
     }))
-        .await;
+    .await;
     future::join_all(
         member_of
             .iter()
@@ -186,7 +182,7 @@ pub async fn update_group_member_gamemodes(user_id: i32, diff: GamemodeUpdate) -
                     .execute(conn)
             }),
     )
-        .await;
+    .await;
 
     Ok(())
 }
@@ -204,25 +200,56 @@ pub async fn delete_group_member(user_id: i32, group: OsuGroup) -> Result<()> {
             .filter(schema::osu_user_groups::user_id.eq(user.id))
             .filter(schema::osu_user_groups::member_of.eq(group)),
     )
-        .execute(conn)
-        .await?;
+    .execute(conn)
+    .await?;
 
     Ok(())
 }
 
-pub async fn update_osu_user_name(user_id: i32, new_name: String) -> Result<()> {
-    diesel::update(osu_users)
-        .set(schema::osu_users::username.eq(new_name))
-        .execute(get_conn!())
-        .await?;
+#[instrument(skip(user_id))]
+pub async fn update_osu_user_profile(
+    user_id: i32,
+    new_name: Option<String>,
+    new_avatar_url: Option<String>,
+) -> Result<()> {
+    info!("Updating user {}", user_id);
+    let filtered = diesel::update(osu_users).filter(schema::osu_users::id.eq(user_id));
+
+    match (new_name, new_avatar_url) {
+        (Some(new_name), Some(new_avatar_url)) => {
+            filtered
+                .set((
+                    schema::osu_users::username.eq(new_name),
+                    schema::osu_users::avatar_url.eq(new_avatar_url),
+                ))
+                .execute(get_conn!())
+                .await?;
+        }
+        (Some(new_name), None) => {
+            filtered
+                .set(schema::osu_users::username.eq(new_name))
+                .execute(get_conn!())
+                .await?;
+        }
+        (None, Some(new_avatar_url)) => {
+            filtered
+                .set(schema::osu_users::avatar_url.eq(new_avatar_url))
+                .execute(get_conn!())
+                .await?;
+        }
+        (None, None) => return Ok(()),
+    };
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diesel_async::RunQueryDsl;
     use pretty_assertions::assert_eq;
     use serde_json::json;
+    use smallvec::smallvec;
     use tokio::sync::OnceCell;
 
     static DB_INIT: OnceCell<()> = OnceCell::const_new();
@@ -242,33 +269,38 @@ mod tests {
     async fn fetch_per_group() {
         init_db().await;
 
-        let user1 = OsuUsers {
+        let user1 = OsuUser {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
+            member_of: vec![
+                (OsuGroup::BeatmapNominator, smallvec![
+                    OsuGamemode::Osu,
+                    OsuGamemode::Taiko,
+                ]),
+                (OsuGroup::ProjectLoved, smallvec![]),
+            ],
         };
-        let user2 = OsuUsers {
+        let user2 = OsuUser {
             id: 728,
             username: "notsigidayo".to_string(),
             avatar_url: "https://i.dont.know2".to_string(),
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
+                OsuGamemode::Mania,
+                OsuGamemode::Taiko,
+            ])],
         };
 
-        insert_group_member(&user1, OsuGroup::BeatmapNominator, vec![
-            OsuGamemode::Osu,
-            OsuGamemode::Taiko,
-        ])
-        .await
-        .unwrap();
-        insert_group_member(&user1, OsuGroup::ProjectLoved, vec![])
+        insert_group_member(&user1, OsuGroup::BeatmapNominator)
+            .await
+            .unwrap();
+        insert_group_member(&user1, OsuGroup::ProjectLoved)
             .await
             .unwrap();
 
-        insert_group_member(&user2, OsuGroup::BeatmapNominator, vec![
-            OsuGamemode::Mania,
-            OsuGamemode::Taiko,
-        ])
-        .await
-        .unwrap();
+        insert_group_member(&user2, OsuGroup::BeatmapNominator)
+            .await
+            .unwrap();
 
         let bn_res = fetch_all_group_members(OsuGroup::BeatmapNominator)
             .await
@@ -284,7 +316,7 @@ mod tests {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, vec![
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
                 OsuGamemode::Osu,
                 OsuGamemode::Taiko,
             ])],
@@ -293,14 +325,14 @@ mod tests {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
-            member_of: vec![(OsuGroup::ProjectLoved, vec![])],
+            member_of: vec![(OsuGroup::ProjectLoved, smallvec![])],
         });
 
         bn_expected.insert(OsuUser {
             id: 728,
             username: "notsigidayo".to_string(),
             avatar_url: "https://i.dont.know2".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, vec![
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
                 OsuGamemode::Mania,
                 OsuGamemode::Taiko,
             ])],
@@ -316,7 +348,7 @@ mod tests {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, vec![
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
                 OsuGamemode::Osu,
                 OsuGamemode::Taiko,
             ])],
@@ -356,32 +388,33 @@ mod tests {
     async fn update_gamemodes() {
         init_db().await;
 
-        let user = OsuUsers {
+        let user = OsuUser {
             id: 729,
             username: "sigidayo2".to_string(),
             avatar_url: "https://i.dont.know3".to_string(),
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
+                OsuGamemode::Osu,
+                OsuGamemode::Taiko,
+            ])],
         };
 
-        insert_group_member(&user, OsuGroup::BeatmapNominator, vec![
-            OsuGamemode::Osu,
-            OsuGamemode::Taiko,
-        ])
+        insert_group_member(&user, OsuGroup::BeatmapNominator)
             .await
             .unwrap();
-        update_group_member_gamemodes(729, GamemodeUpdate {
+        update_group_member_gamemodes(729, &GamemodeUpdate {
             group: OsuGroup::BeatmapNominator,
-            added: vec![OsuGamemode::Fruits],
-            removed: vec![OsuGamemode::Taiko],
+            added: smallvec![OsuGamemode::Fruits],
+            removed: smallvec![OsuGamemode::Taiko],
         })
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         let mut expected = HashSet::with_capacity(1);
         expected.insert(OsuUser {
             id: 729,
             username: "sigidayo2".to_string(),
             avatar_url: "https://i.dont.know3".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, vec![
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
                 OsuGamemode::Osu,
                 OsuGamemode::Fruits,
             ])],
@@ -475,13 +508,13 @@ mod tests {
                 id: 8301957,
                 username: "_gt".to_string(),
                 avatar_url: "https://a.ppy.sh/8301957?1706078382.jpeg".to_string(),
-                member_of: vec![(OsuGroup::BeatmapNominator, vec![OsuGamemode::Taiko])],
+                member_of: vec![(OsuGroup::BeatmapNominator, smallvec![OsuGamemode::Taiko])],
             },
             OsuUser {
                 id: 6291741,
                 username: "BlackBN".to_string(),
                 avatar_url: "https://a.ppy.sh/6291741?1734789574.jpeg".to_string(),
-                member_of: vec![(OsuGroup::BeatmapNominator, vec![
+                member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
                     OsuGamemode::Taiko,
                     OsuGamemode::Fruits,
                 ])],
@@ -491,8 +524,8 @@ mod tests {
                 username: "Monoseul".to_string(),
                 avatar_url: "https://a.ppy.sh/16010604?1731223405.jpeg".to_string(),
                 member_of: vec![
-                    (OsuGroup::BeatmapNominator, vec![OsuGamemode::Mania]),
-                    (OsuGroup::ProjectLoved, vec![]),
+                    (OsuGroup::BeatmapNominator, smallvec![OsuGamemode::Mania]),
+                    (OsuGroup::ProjectLoved, smallvec![]),
                 ],
             },
             OsuUser {
@@ -500,12 +533,57 @@ mod tests {
                 username: "_Stan".to_string(),
                 avatar_url: "https://a.ppy.sh/1653229?1723014420.jpeg".to_string(),
                 member_of: vec![
-                    (OsuGroup::BeatmapNominator, vec![OsuGamemode::Mania]),
-                    (OsuGroup::Alumni, vec![]),
+                    (OsuGroup::BeatmapNominator, smallvec![OsuGamemode::Mania]),
+                    (OsuGroup::Alumni, smallvec![]),
                 ],
             },
         ];
 
         assert_eq!(users, expected);
+    }
+
+    #[tokio::test]
+    async fn update_user_profile() {
+        init_db().await;
+
+        let old = OsuUser {
+            id: 1000,
+            username: "old_name".to_string(),
+            avatar_url: "old_avatar_url".to_string(),
+            member_of: vec![],
+        };
+
+        insert_group_member(&old, OsuGroup::BeatmapNominator)
+            .await
+            .unwrap();
+        update_osu_user_profile(
+            1000,
+            Some("new_name".to_string()),
+            Some("new_avatar_url".to_string()),
+        )
+        .await
+        .unwrap();
+
+        let res = fetch_all_group_members(OsuGroup::BeatmapNominator)
+            .await
+            .unwrap()
+            .into_iter()
+            .nth(0)
+            .unwrap();
+        let expected = OsuUser {
+            id: 1000,
+            username: "new_name".to_string(),
+            avatar_url: "new_avatar_url".to_string(),
+            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![])],
+        };
+        delete_group_member(1000, OsuGroup::BeatmapNominator)
+            .await
+            .unwrap();
+        diesel::delete(osu_users.filter(schema::osu_users::id.eq(1000)))
+            .execute(get_conn!())
+            .await
+            .unwrap();
+
+        assert_eq!(expected, res)
     }
 }
