@@ -274,10 +274,10 @@ mod tests {
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
             member_of: vec![
-                (OsuGroup::BeatmapNominator, smallvec![
-                    OsuGamemode::Osu,
-                    OsuGamemode::Taiko,
-                ]),
+                (
+                    OsuGroup::BeatmapNominator,
+                    smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+                ),
                 (OsuGroup::ProjectLoved, smallvec![]),
             ],
         };
@@ -285,10 +285,10 @@ mod tests {
             id: 728,
             username: "notsigidayo".to_string(),
             avatar_url: "https://i.dont.know2".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Mania,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Mania, OsuGamemode::Taiko,],
+            )],
         };
 
         insert_group_member(&user1, OsuGroup::BeatmapNominator)
@@ -316,10 +316,10 @@ mod tests {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         });
         loved_expected.insert(OsuUser {
             id: 727,
@@ -332,10 +332,10 @@ mod tests {
             id: 728,
             username: "notsigidayo".to_string(),
             avatar_url: "https://i.dont.know2".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Mania,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Mania, OsuGamemode::Taiko,],
+            )],
         });
 
         assert_eq!(bn_expected, bn_res);
@@ -348,10 +348,10 @@ mod tests {
             id: 727,
             username: "sigidayo".to_string(),
             avatar_url: "https://i.dont.know".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         });
 
         let bn_res = fetch_all_group_members(OsuGroup::BeatmapNominator)
@@ -392,20 +392,23 @@ mod tests {
             id: 729,
             username: "sigidayo2".to_string(),
             avatar_url: "https://i.dont.know3".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         };
 
         insert_group_member(&user, OsuGroup::BeatmapNominator)
             .await
             .unwrap();
-        update_group_member_gamemodes(729, &GamemodeUpdate {
-            group: OsuGroup::BeatmapNominator,
-            added: smallvec![OsuGamemode::Fruits],
-            removed: smallvec![OsuGamemode::Taiko],
-        })
+        update_group_member_gamemodes(
+            729,
+            &GamemodeUpdate {
+                group: OsuGroup::BeatmapNominator,
+                added: smallvec![OsuGamemode::Fruits],
+                removed: smallvec![OsuGamemode::Taiko],
+            },
+        )
         .await
         .unwrap();
 
@@ -414,10 +417,10 @@ mod tests {
             id: 729,
             username: "sigidayo2".to_string(),
             avatar_url: "https://i.dont.know3".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Fruits,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Fruits,],
+            )],
         });
 
         let res = fetch_all_group_members(OsuGroup::BeatmapNominator)
@@ -514,10 +517,10 @@ mod tests {
                 id: 6291741,
                 username: "BlackBN".to_string(),
                 avatar_url: "https://a.ppy.sh/6291741?1734789574.jpeg".to_string(),
-                member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                    OsuGamemode::Taiko,
-                    OsuGamemode::Fruits,
-                ])],
+                member_of: vec![(
+                    OsuGroup::BeatmapNominator,
+                    smallvec![OsuGamemode::Taiko, OsuGamemode::Fruits,],
+                )],
             },
             OsuUser {
                 id: 16010604,

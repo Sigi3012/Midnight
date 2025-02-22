@@ -158,9 +158,8 @@ async fn update_mapfeed() -> Result<(), Error> {
     );
     info!("Common ids: {:?}", common_ids);
 
-    let channels = fetch_all_subscribed_channels(ChannelType::Mapfeed(SubscriptionMode::Subscribe))
-        .await?
-        .unwrap_or_else(Vec::new);
+    let channels =
+        fetch_all_subscribed_channels(ChannelType::Mapfeed(SubscriptionMode::Subscribe)).await?;
     debug!("Channel ids {:?}", channels);
 
     // I wrote this functionally mostly just for fun, I definitely think a for loop based approach is better.

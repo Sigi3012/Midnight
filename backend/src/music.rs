@@ -67,10 +67,14 @@ impl ChannelCache {
             match fetch_all_subscribed_channels(ChannelType::Music(SubscriptionMode::Subscribe))
                 .await
             {
-                Ok(Some(ids)) => {
+                Ok(ids) => {
                     let stored: HashSet<i64> = ids.into_iter().collect();
 
                     let mut guard = self.channels.lock().await;
+                    if stored.is_empty() {
+                        guard.clear();
+                        return;
+                    }
 
                     let new_ids: HashSet<i64> = stored.difference(&guard).cloned().collect();
                     let removed_ids: HashSet<i64> = guard.difference(&stored).cloned().collect();
@@ -83,10 +87,6 @@ impl ChannelCache {
                     });
                     info!("Updated music channel cache successfully")
                 }
-                Ok(None) => {
-                    let mut guard = self.channels.lock().await;
-                    guard.clear()
-                }
                 Err(e) => {
                     error!("Failed to update music channel cache, {}", e)
                 }
@@ -96,12 +96,10 @@ impl ChannelCache {
 
     async fn populate(&self) {
         let mut guard = self.channels.lock().await;
-        if let Ok(Some(ids)) =
+        if let Ok(ids) =
             fetch_all_subscribed_channels(ChannelType::Music(SubscriptionMode::Subscribe)).await
         {
             *guard = ids.iter().cloned().collect::<HashSet<i64>>()
-        } else {
-            *guard = HashSet::new()
         }
 
         info!("Music channel cache initialized");

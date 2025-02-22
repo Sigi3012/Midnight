@@ -19,6 +19,7 @@ use std::{
 pub enum ChannelKind {
     Mapfeed,
     Music,
+    Groups,
 }
 
 impl ToSql<crate::schema::sql_types::ChannelKind, Pg> for ChannelKind {
@@ -26,6 +27,7 @@ impl ToSql<crate::schema::sql_types::ChannelKind, Pg> for ChannelKind {
         match *self {
             ChannelKind::Mapfeed => out.write_all(b"mapfeed")?,
             ChannelKind::Music => out.write_all(b"music")?,
+            ChannelKind::Groups => out.write_all(b"groups")?,
         }
         Ok(IsNull::No)
     }
@@ -36,6 +38,7 @@ impl FromSql<crate::schema::sql_types::ChannelKind, Pg> for ChannelKind {
         match bytes.as_bytes() {
             b"mapfeed" => Ok(ChannelKind::Mapfeed),
             b"music" => Ok(ChannelKind::Music),
+            b"groups" => Ok(ChannelKind::Groups),
             _ => Err("Unrecognized enum variant".into()),
         }
     }

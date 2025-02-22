@@ -1,6 +1,7 @@
 use crate::REQWEST_CLIENT;
 use anyhow::{Context, Result, anyhow};
 use common::context::get_context_wrapper;
+use database::subscriptions::{ChannelType, SubscriptionMode, fetch_all_subscribed_channels};
 use database::{
     groups::{
         GamemodeUpdate, OsuUser, delete_group_member, fetch_all_group_members, insert_group_member,
@@ -21,7 +22,6 @@ use tokio::{
 };
 use tracing::{debug, error, info, instrument};
 
-const TEST_CHANNEL: u64 = 1336700236479070230;
 const SLEEP_DURATION: Duration = Duration::from_hours(4);
 const ERROR_COOLDOWN: Duration = Duration::from_mins(1);
 
@@ -98,7 +98,9 @@ async fn update_group(group: OsuGroup) -> Result<()> {
     let diff = get_diff(local_data, HashSet::from_iter(external_data), group);
     let embeds = process(&diff, group).await?;
 
-    let channel = ChannelId::new(TEST_CHANNEL);
+    let channels =
+        fetch_all_subscribed_channels(ChannelType::Groups(SubscriptionMode::Subscribe)).await?;
+    //let channels = ChannelId::new(TEST_CHANNEL);
     let ctx = get_context_wrapper();
 
     debug!("New users {:#?}", diff.added);
@@ -107,10 +109,14 @@ async fn update_group(group: OsuGroup) -> Result<()> {
 
     if !populate_flag {
         let embed_count = embeds.len();
-        for embed in embeds {
-            channel
-                .send_message(&ctx, CreateMessage::new().embed(embed))
-                .await?;
+
+        for channel in channels {
+            for embed in &embeds {
+                // Why don't you accept a pointer grr
+                ChannelId::new(channel as u64)
+                    .send_message(&ctx, CreateMessage::new().embed(embed.clone()))
+                    .await?;
+            }
         }
         if embed_count > 0 {
             info!("Finished sending {} messages", embed_count);
@@ -258,11 +264,14 @@ fn get_diff(
                             .copied(),
                     );
                     if !added.is_empty() || !removed.is_empty() {
-                        return Some((api_user, GamemodeUpdate {
-                            group: for_group,
-                            added,
-                            removed,
-                        }));
+                        return Some((
+                            api_user,
+                            GamemodeUpdate {
+                                group: for_group,
+                                added,
+                                removed,
+                            },
+                        ));
                     };
                 }
             }
@@ -325,19 +334,19 @@ mod test {
             id: 100,
             username: "original_name".to_string(),
             avatar_url: "placeholder".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         });
         api.insert(OsuUser {
             id: 100,
             username: "changed_name".to_string(),
             avatar_url: "changed_avatar".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         });
 
         let diff = get_diff(stored, api, OsuGroup::BeatmapNominator);
@@ -357,23 +366,24 @@ mod test {
             username: "a".to_string(),
             avatar_url: "b".to_string(),
             member_of: vec![
-                (OsuGroup::BeatmapNominator, smallvec![
-                    OsuGamemode::Osu,
-                    OsuGamemode::Taiko,
-                ]),
-                (OsuGroup::BeatmapSpotlightCurator, smallvec![
-                    OsuGamemode::Osu,
-                    OsuGamemode::Mania,
-                ]),
+                (
+                    OsuGroup::BeatmapNominator,
+                    smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+                ),
+                (
+                    OsuGroup::BeatmapSpotlightCurator,
+                    smallvec![OsuGamemode::Osu, OsuGamemode::Mania,],
+                ),
             ],
         });
         api.insert(OsuUser {
             id: 1,
             username: "a".to_string(),
             avatar_url: "b".to_string(),
-            member_of: vec![(OsuGroup::BeatmapSpotlightCurator, smallvec![
-                OsuGamemode::Taiko
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapSpotlightCurator,
+                smallvec![OsuGamemode::Taiko],
+            )],
         });
 
         let diff = get_diff(stored, api, OsuGroup::BeatmapNominator);
@@ -386,9 +396,10 @@ mod test {
                     id: 1,
                     username: "a".to_string(),
                     avatar_url: "b".to_string(),
-                    member_of: vec![(OsuGroup::BeatmapSpotlightCurator, smallvec![
-                        OsuGamemode::Taiko
-                    ])],
+                    member_of: vec![(
+                        OsuGroup::BeatmapSpotlightCurator,
+                        smallvec![OsuGamemode::Taiko]
+                    )],
                 },
                 GamemodeUpdate {
                     group: OsuGroup::BeatmapNominator,
@@ -409,10 +420,10 @@ mod test {
             id: 1,
             username: "a".to_string(),
             avatar_url: "b".to_string(),
-            member_of: vec![(OsuGroup::BeatmapNominator, smallvec![
-                OsuGamemode::Osu,
-                OsuGamemode::Taiko,
-            ])],
+            member_of: vec![(
+                OsuGroup::BeatmapNominator,
+                smallvec![OsuGamemode::Osu, OsuGamemode::Taiko,],
+            )],
         });
         api.insert(OsuUser {
             id: 1,
