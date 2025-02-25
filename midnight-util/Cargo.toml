@@ -1,0 +1,12 @@
+[package]
+name = "midnight-util"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+midnight-model.workspace = true
+poise.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

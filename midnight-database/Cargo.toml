@@ -1,0 +1,23 @@
+[package]
+name = "midnight-database"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+midnight-model.workspace = true
+
+anyhow.workspace = true
+diesel.workspace = true
+diesel-async.workspace = true
+diesel_migrations.workspace = true
+futures.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

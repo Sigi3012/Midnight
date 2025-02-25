@@ -3,6 +3,7 @@ alias b := build
 
 build:
     cargo fmt
+    cargo clippy
     cargo b
 
 test:

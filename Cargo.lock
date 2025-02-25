@@ -80,34 +80,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
-name = "backend"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "common",
- "database",
- "dotenv",
- "fancy-regex",
- "futures",
- "itertools",
- "lazy_static",
- "log",
- "poise",
- "pretty_assertions",
- "rand",
- "reqwest 0.12.4",
- "serde",
- "serde-xml-rs",
- "serde_json",
- "serenity",
- "smallvec",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "backtrace"
 version = "0.3.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -180,23 +152,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "bot"
-version = "0.1.0"
-dependencies = [
- "backend",
- "common",
- "database",
- "dotenv",
- "log",
- "once_cell",
- "paste",
- "poise",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -290,17 +245,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "common"
-version = "0.1.0"
-dependencies = [
- "lazy_static",
- "once_cell",
- "serenity",
- "sysinfo",
- "tokio",
 ]
 
 [[package]]
@@ -437,23 +381,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
-name = "database"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "diesel",
- "diesel-async",
- "diesel_migrations",
- "futures",
- "pretty_assertions",
- "serde",
- "serde_json",
- "smallvec",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -552,10 +479,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "dotenv"
-version = "0.15.0"
+name = "dotenvy"
+version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dsl_auto_type"
@@ -1088,15 +1015,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f518f335dce6725a761382244631d86cf0ccb2863413590b31338feb467f9c3"
 
 [[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,6 +1093,94 @@ name = "memchr"
 version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
+
+[[package]]
+name = "midnight"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenvy",
+ "fancy-regex",
+ "futures",
+ "lazy_static",
+ "log",
+ "midnight-api",
+ "midnight-database",
+ "midnight-model",
+ "midnight-util",
+ "once_cell",
+ "paste",
+ "poise",
+ "pretty_assertions",
+ "reqwest 0.12.4",
+ "serde",
+ "serde_json",
+ "serenity",
+ "smallvec",
+ "sysinfo",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "midnight-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenvy",
+ "fancy-regex",
+ "futures",
+ "midnight-model",
+ "midnight-util",
+ "rand",
+ "reqwest 0.12.4",
+ "serde",
+ "serde-xml-rs",
+ "serde_json",
+ "smallvec",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "midnight-database"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "diesel",
+ "diesel-async",
+ "diesel_migrations",
+ "futures",
+ "midnight-model",
+ "pretty_assertions",
+ "serde_json",
+ "smallvec",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "midnight-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "diesel",
+ "serde",
+ "serde_json",
+ "smallvec",
+]
+
+[[package]]
+name = "midnight-util"
+version = "0.1.0"
+dependencies = [
+ "midnight-model",
+ "poise",
+ "tokio",
+]
 
 [[package]]
 name = "migrations_internals"

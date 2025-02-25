@@ -1,14 +1,17 @@
+cargo-features = ["profile-rustflags", "trim-paths"]
+
 [workspace]
-members = ["bot", "backend", "database", "common"]
+members = ["midnight", "midnight-api", "midnight-database", "midnight-model", "midnight-util"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 
 [workspace.dependencies]
-backend = { path = "backend" }
-common = { path = "common" }
-database = { path = "database" }
+midnight-api = { path = "midnight-api" }
+midnight-database = { path = "midnight-database" }
+midnight-model = { path = "midnight-model" }
+midnight-util = { path = "midnight-util" }
 
 chrono = { version = "0.4.0", features = ["serde"] }
 diesel-async = { version = "0.5.2", features = ["postgres", "bb8", "async-connection-wrapper"] }
@@ -20,10 +23,9 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 anyhow = "1.0.89"
 diesel = "2.2.6"
 diesel_migrations = "2.2.0"
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 fancy-regex = "0.13.0"
 futures = "0.3"
-itertools = "0.13.0"
 lazy_static = "1.4.0"
 log = "0.4.21"
 once_cell = "1.19.0"
@@ -49,8 +51,15 @@ complexity = "deny"
 perf = "deny"
 suspicious = "deny"
 
+[profile.dev]
+incremental = true                           # Compile your binary in smaller steps.
+rustflags = ["-Zthreads=8"]                  # Better compile performance.
+
 [profile.release]
-strip = true      # Automatically strip symbols from the binary.
-lto = true        # Link-time optimization.
-opt-level = 3     # Optimize for speed.
-codegen-units = 1 # Maximum size reduction optimizations.
+codegen-units = 1                            # Allows LLVM to perform better optimization.
+lto = true                                   # Enables link-time-optimizations.
+opt-level = "s"                              # Prioritizes small binary size.
+panic = "abort"                              # Higher performance by disabling panic handlers.
+strip = true                                 # Ensures debug symbols are removed.
+trim-paths = "all"                           # Removes potentially privileged information from the binaries.
+rustflags = ["-Cdebuginfo=0", "-Zthreads=8"] # Better compile performance.
