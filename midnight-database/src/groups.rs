@@ -77,13 +77,13 @@ pub async fn insert_group_member(
         }
     };
 
-    if (osu_user_groups
+    if osu_user_groups
         .filter(schema::osu_user_groups::user_id.eq(user_obj.id))
         .filter(schema::osu_user_groups::member_of.eq(group))
         .first::<OsuUserGroups>(conn)
         .await
-        .optional()?)
-    .is_some()
+        .optional()?
+        .is_some()
     {
         warn!("User is already a member of {group:?} skipping insertion");
         return Ok(());

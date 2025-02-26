@@ -1,7 +1,6 @@
 use crate::context::DiscordContextWrapper;
 use config::CONFIG;
 use poise::serenity_prelude as serenity;
-use std::process::exit;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -58,7 +57,7 @@ async fn main() {
         .options(framework_options)
         .setup(move |ctx, _ready, _framework| {
             Box::pin(async move {
-                if let Err(why) = context::Context::init(
+                if let Err(why) = context::Context::new(
                     &CONFIG,
                     DiscordContextWrapper {
                         shard: ctx.shard.clone(),
@@ -82,10 +81,7 @@ async fn main() {
         serenity::ClientBuilder::new(&*CONFIG.tokens.discord, intents)
             .framework(framework)
             .await
-            .unwrap_or_else(|err| {
-                error!("Error while creating client: {}", err);
-                exit(1);
-            });
+            .expect("Client should be creatable");
 
     let shard_manager = client.shard_manager.clone();
 

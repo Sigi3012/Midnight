@@ -25,7 +25,6 @@ pub struct Database {
 impl Database {
     pub async fn new(db_url: &str) -> Result<Self> {
         let mut pool = Pool::builder()
-            //.max_size(1)
             .max_lifetime(Some(Duration::new(45 * 60, 0)))
             .build(AsyncDieselConnectionManager::<AsyncPgConnection>::new(
                 db_url,

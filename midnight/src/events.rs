@@ -1,7 +1,11 @@
-use crate::features::links;
-use crate::features::music::{DownloadError, music_link_handler};
-use crate::features::sticky::sticky_message_handler;
-use crate::{Data, Error};
+use crate::{
+    Data, Error,
+    features::{
+        links,
+        music::{DownloadError, music_link_handler},
+        sticky::sticky_message_handler,
+    },
+};
 use poise::serenity_prelude::{
     self as serenity, CreateAttachment, CreateMessage, FullEvent, Message, MessageFlags,
 };
@@ -35,7 +39,7 @@ async fn handle_incoming_message(
                 if let Some(reply_handle) = &new_message.referenced_message {
                     target = reply_handle
                 }
-                match links::message_handler(
+                if let Err(why) = links::message_handler(
                     content,
                     new_message.author.id.get(),
                     new_message.channel_id,
@@ -43,12 +47,10 @@ async fn handle_incoming_message(
                 )
                 .await
                 {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error!("Something went wrong while sending reply message: {}", e);
-                        return Ok(());
-                    }
+                    error!("Something went wrong while sending reply message: {}", why);
+                    return Ok(());
                 }
+
                 new_message.delete(ctx).await?;
                 // TODO analytics
                 info!("Fixed up a message successfully")
@@ -56,7 +58,7 @@ async fn handle_incoming_message(
         }
         Err(e) => {
             new_message.reply(ctx, "Something went wrong").await?;
-            error!("Something went wrong while fixing a link! {}", e)
+            error!(new_message.content, "Failed to fix a link, {}", e)
         }
     };
 
@@ -85,9 +87,8 @@ async fn handle_incoming_message(
         }
     };
 
-    match sticky_message_handler(new_message).await {
-        Ok(_) => {}
-        Err(e) => error!("Something went wrong while sending sticky message: {}", e),
+    if let Err(why) = sticky_message_handler(new_message).await {
+        error!("Something went wrong while sending sticky message: {}", why)
     }
 
     Ok(())

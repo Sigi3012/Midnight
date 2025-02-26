@@ -10,12 +10,12 @@ midnight-model.workspace = true
 anyhow.workspace = true
 fancy-regex.workspace = true
 futures.workspace = true
+rand.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde-xml-rs.workspace = true
 smallvec.workspace = true
-reqwest.workspace = true
-rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

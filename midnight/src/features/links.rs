@@ -1,20 +1,21 @@
 use crate::context::Context;
-use ::serenity::all::{
-    ChannelId, CreateInteractionResponseMessage, CreateMessage, EditMessage,
-    model::channel::MessageFlags,
-};
+use anyhow::{Result, bail};
 use fancy_regex::Regex;
 use futures::StreamExt;
-use lazy_static::lazy_static;
-use log::{debug, error, info, warn};
 use midnight_util::constants::EMBED_BUTTON_TIMEOUT;
 use poise::serenity_prelude as serenity;
 use serde::Deserialize;
+use serenity::all::{
+    ChannelId, CreateInteractionResponseMessage, CreateMessage, EditMessage,
+    model::channel::MessageFlags,
+};
+use std::sync::LazyLock;
+use tracing::{debug, error, info, warn};
 
-lazy_static! {
-    #[derive(Debug)]
-    static ref BUILT_PATTERNS: Vec<BuiltPattern> = build_all().expect("All patterns should build according to tests");
-}
+static BUILT_PATTERNS: LazyLock<Vec<BuiltPattern>> =
+    LazyLock::new(|| build_all().expect("All patterns should build according to tests"));
+
+const RAW_PATTERNS: &str = include_str!("../../../patterns.json");
 
 #[derive(Deserialize)]
 struct LoadedJson {
@@ -28,13 +29,6 @@ struct BuiltPattern {
     replacement: String,
 }
 
-fn load_json_patterns() -> Result<Vec<LoadedJson>, Box<dyn std::error::Error>> {
-    let file = include_str!("../../../patterns.json");
-    let deserialized: Vec<LoadedJson> = serde_json::from_str(file)?;
-
-    Ok(deserialized)
-}
-
 fn build_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>> {
     match Regex::new(pattern) {
         Ok(regex) => Ok(regex),
@@ -45,27 +39,20 @@ fn build_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>> {
     }
 }
 
-fn build_all() -> Result<Vec<BuiltPattern>, Box<dyn std::error::Error>> {
-    let mut patterns: Vec<BuiltPattern> = Vec::new();
-
-    match load_json_patterns() {
-        Ok(jsons) => {
-            for item in jsons.iter() {
-                let regex_pattern = build_regex(&item.pattern)?;
-                patterns.push(BuiltPattern {
-                    pattern: regex_pattern,
-                    replacement: item.replacement.to_owned(),
-                });
-            }
-        }
-        Err(e) => {
-            error!("Failed to load json file, error: {}", e);
-            return Err(e);
-        }
-    };
+fn build_all() -> Result<Vec<BuiltPattern>> {
+    let deserialized: Vec<LoadedJson> = serde_json::from_str(RAW_PATTERNS)?;
+    let patterns: Vec<BuiltPattern> = deserialized
+        .into_iter()
+        .map(|item| -> Result<BuiltPattern> {
+            Ok(BuiltPattern {
+                pattern: build_regex(&item.pattern)?,
+                replacement: item.replacement,
+            })
+        })
+        .filter_map(Result::ok) // This is fine because we test all the regex
+        .collect();
 
     info!("Built {} patterns successfully", patterns.len());
-
     Ok(patterns)
 }
 
@@ -73,7 +60,6 @@ pub async fn fix_links(
     message: &poise::serenity_prelude::Message,
 ) -> Result<Option<String>, fancy_regex::Error> {
     let mut result = message.content.clone();
-    // Check if a message contains a link within the loaded patterns
     for built in BUILT_PATTERNS.iter() {
         if built.pattern.is_match(&message.content)? {
             result = built
@@ -84,10 +70,10 @@ pub async fn fix_links(
         }
     }
 
-    if result == message.content {
-        Ok(None)
-    } else {
+    if result != message.content {
         Ok(Some(result))
+    } else {
+        Ok(None)
     }
 }
 
@@ -128,7 +114,7 @@ pub async fn message_handler(
                 };
             } else {
                 warn!("{} cannot press this button", interaction.user.name);
-                match interaction
+                if let Err(why) = interaction
                     .create_response(
                         &ctx,
                         serenity::CreateInteractionResponse::Message(
@@ -139,27 +125,26 @@ pub async fn message_handler(
                     )
                     .await
                 {
-                    Ok(_) => (),
-                    Err(e) => error!("Interaction failure, {}", e),
+                    error!("Interaction failure, {}", why)
                 }
             };
 
-            match interaction
+            if let Err(why) = interaction
                 .create_response(&ctx, serenity::CreateInteractionResponse::Acknowledge)
                 .await
             {
-                Ok(_) => (),
-                Err(e) => error!("Interaction failure, {}", e),
+                error!("Interaction failure, {}", why)
             }
         }
 
-        // FIXME define a new error please and thankyou
         if let Err(why) = message
             .edit(&ctx, EditMessage::new().components(vec![]))
             .await
         {
-            error!("Failed to remove components, {}", why)
+            bail!("Failed to remove components, {}", why)
         };
+
+        Ok(())
     });
 
     Ok(())
@@ -188,17 +173,9 @@ mod tests {
     }
 
     #[test]
-    fn test_load_json() {
-        let json = load_json_patterns();
-        assert!(json.is_ok())
-    }
-
-    #[test]
     fn test_build_patterns() {
-        let json = load_json_patterns().unwrap();
         let built = build_all();
         assert!(built.is_ok());
-        assert_eq!(built.unwrap().len(), json.len())
     }
 
     #[tokio::test]

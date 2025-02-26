@@ -1,5 +1,5 @@
 use crate::{DiscordContext, Error};
-use log::info;
+use tracing::info;
 
 #[poise::command(prefix_command, owners_only)]
 pub async fn sync(ctx: DiscordContext<'_>) -> Result<(), Error> {

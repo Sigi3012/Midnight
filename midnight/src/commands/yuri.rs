@@ -1,7 +1,6 @@
-use crate::context::Context;
-use crate::{DiscordContext, Error};
-use log::{error, info};
+use crate::{DiscordContext, Error, context::Context};
 use poise::{CreateReply, serenity_prelude as serenity};
+use tracing::{error, info};
 
 async fn handle_message_creation(
     ctx: DiscordContext<'_>,

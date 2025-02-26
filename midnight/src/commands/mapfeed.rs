@@ -1,13 +1,13 @@
-use crate::context::Context;
 use crate::{
     DiscordContext, Error,
+    context::Context,
     features::mapfeed::{create_reply_with_sorted_beatmaps, subscription_handler},
 };
-use log::{error, info};
 use midnight_database::{
     mapfeed::fetch_all_subscriptions_for_user, subscriptions::SubscriptionMode,
 };
 use poise::CreateReply;
+use tracing::{error, info};
 
 #[poise::command(
     slash_command,

@@ -1,8 +1,6 @@
 use crate::context::{Context, DiscordContextWrapper};
 use anyhow::{Error, anyhow, bail};
 use fancy_regex::Regex;
-use lazy_static::lazy_static;
-use log::{debug, error, info, warn};
 use midnight_database::{
     mapfeed::{
         delete_beatmap, fetch_all_subscribers_for_beatmap, fetch_all_tracked, insert_beatmaps,
@@ -28,15 +26,13 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     hash::Hash,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::LazyLock,
 };
 use tokio::{
     task,
     time::{Instant, sleep},
 };
+use tracing::{debug, error, info};
 
 pub struct MapfeedManager;
 
@@ -56,19 +52,19 @@ enum ButtonState {
     Unsubscribe,
 }
 
-lazy_static! {
-    #[derive(Debug)]
-    static ref OSU_LINK_REGEX: Regex = Regex::new(r#"(?:https:\/\/osu\.ppy\.sh/beatmapsets/)(\d+)"#).expect("Regex should compile");
-}
+static OSU_LINK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:https:\/\/osu\.ppy\.sh/beatmapsets/)(\d+)"#).expect("Regex should compile")
+});
 
 impl MapfeedManager {
-    pub async fn start() -> Self {
-        let stop_flag = Arc::new(AtomicBool::new(false));
-        let clone = stop_flag.clone();
-
+    pub fn new() -> Self {
         info!("Spawning new mapfeed manager");
         task::spawn(async move {
-            while !clone.load(Ordering::Relaxed) {
+            if let Err(why) = populate().await {
+                error!("Failed to populate database, {}", why);
+            }
+
+            loop {
                 if let Err(why) = update_mapfeed().await {
                     error!("Failed to refresh mapfeed, error: {}", why);
                     sleep(ERROR_BACKOFF_COOLDOWN).await;
@@ -76,8 +72,6 @@ impl MapfeedManager {
                     sleep(MAPFEED_LOOP_DURATION).await;
                 }
             }
-
-            warn!("Mapfeed stopped")
         });
 
         Self
@@ -149,7 +143,7 @@ async fn update_mapfeed() -> Result<(), Error> {
     );
     info!("Common ids: {:?}", common_ids);
 
-    let mut message_data = Vec::with_capacity(new_maps.len() * changed_maps.len());
+    let mut message_data = Vec::with_capacity(new_maps.len() + changed_maps.len());
     for map in new_maps {
         let embed = build_embed(&map);
         if let Err(why) = insert_beatmaps(&mut conn, vec![map.id]).await {
@@ -260,10 +254,9 @@ pub fn build_embed(beatmapset: &Beatmapset) -> CreateEmbed {
         }
     };
 
-    let mut ranked_date_string: String = "**".to_string();
-    if let Some(unix) = beatmapset.ranked_date_unix {
-        ranked_date_string = format!(" <t:{}:R>**", unix)
-    };
+    let ranked_date_string = beatmapset
+        .ranked_date_unix
+        .map_or("**".to_string(), |unix| format!(" <t:{}:R>**", unix));
 
     #[allow(clippy::unwrap_used)] // The `submitted_date_unix` field will never be `None`
     let description = format!(
@@ -424,7 +417,7 @@ async fn handle_interaction(interaction: ComponentInteraction, ctx: &DiscordCont
         }
     }
 
-    match interaction
+    if let Err(why) = interaction
         .create_response(
             &ctx,
             CreateInteractionResponse::Message(
@@ -435,12 +428,11 @@ async fn handle_interaction(interaction: ComponentInteraction, ctx: &DiscordCont
         )
         .await
     {
-        Ok(_) => (),
-        Err(e) => error!("Interaction failure, {}", e),
+        error!("Interaction failure, {}", why)
     }
 }
 
-pub async fn populate() -> anyhow::Result<()> {
+async fn populate() -> anyhow::Result<()> {
     let mut conn = Context::database().get_conn().await;
     info!("Populating database");
     if fetch_all_tracked(&mut conn).await?.is_none() {

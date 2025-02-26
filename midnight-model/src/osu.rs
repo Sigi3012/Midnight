@@ -35,7 +35,7 @@ pub struct Beatmapset {
 
     #[serde(rename = "submitted_date")]
     #[serde(deserialize_with = "deserialize_rfc3339_to_unix_timestamp")]
-    // NOTE this will always be Some(i64) because I don't want to bother with generics
+    // NOTE this will always be Some(i64) because I don't want to bother with a custom deserialization
     pub submitted_date_unix: Option<i64>,
 }
 
@@ -123,7 +123,7 @@ pub struct SearchResponse {
 
 fn deserialize_member_of<'de, D>(deserializer: D) -> Result<MemberOfDeserializeInner, D::Error>
 where
-    D: serde::Deserializer<'de>,
+    D: Deserializer<'de>,
 {
     #[derive(Deserialize, Debug)]
     struct Group {
@@ -156,7 +156,7 @@ where
 
 fn deserialize_beatmapset_ids<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
 where
-    D: serde::Deserializer<'de>,
+    D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     struct Beatmapset {

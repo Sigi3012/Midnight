@@ -11,9 +11,9 @@ diesel.workspace = true
 diesel-async.workspace = true
 diesel_migrations.workspace = true
 futures.workspace = true
-tracing.workspace = true
-tokio.workspace = true
 smallvec.workspace = true
+tokio.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

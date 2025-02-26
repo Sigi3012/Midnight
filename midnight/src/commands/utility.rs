@@ -1,30 +1,9 @@
 use crate::{Data, DiscordContext, Error, context::Context};
-use lazy_static::lazy_static;
 use poise::{
     CreateReply,
     serenity_prelude::{Colour, CreateEmbed},
 };
-use sysinfo::{
-    CpuRefreshKind, MINIMUM_CPU_UPDATE_INTERVAL, MemoryRefreshKind, RefreshKind, System,
-};
-use tokio::{sync::Mutex, time::Instant};
-
-const KILOBYTE: u64 = 1024;
-const MEGABYTE: u64 = KILOBYTE * 1024;
-const GIGABYTE: u64 = MEGABYTE * 1024;
-
-lazy_static! {
-    pub static ref SYSTEM: Mutex<System> = {
-        let mut sys = System::new();
-        sys.refresh_specifics(RefreshKind::new().with_cpu(CpuRefreshKind::everything()));
-        sys.refresh_specifics(
-            RefreshKind::new().with_memory(MemoryRefreshKind::new().with_ram().with_swap()),
-        );
-        std::thread::sleep(MINIMUM_CPU_UPDATE_INTERVAL);
-        sys.refresh_cpu_usage();
-        Mutex::new(sys)
-    };
-}
+use tokio::time::Instant;
 
 impl Data {
     pub fn uptime(&self) -> String {
@@ -52,16 +31,6 @@ impl Data {
     }
 }
 
-fn format_bytes(bytes: u64) -> String {
-    let (value, unit) = match bytes {
-        b if b >= GIGABYTE => (bytes as f64 / GIGABYTE as f64, "GB"),
-        b if b >= MEGABYTE => (bytes as f64 / MEGABYTE as f64, "MB"),
-        b if b >= KILOBYTE => (bytes as f64 / KILOBYTE as f64, "KB"),
-        _ => (bytes as f64, "B"),
-    };
-    format!("{:.2} {}", value, unit)
-}
-
 /// Shows various informationals about the bot
 #[poise::command(prefix_command, category = "Utility")]
 pub async fn status(ctx: DiscordContext<'_>) -> Result<(), Error> {
@@ -71,26 +40,6 @@ pub async fn status(ctx: DiscordContext<'_>) -> Result<(), Error> {
     let bot_latency = start.elapsed().as_millis();
     let shard_latency = ctx.ping().await.as_millis();
 
-    let (
-        system_cpu_usage,
-        system_ram_usage,
-        system_ram_total,
-        system_swap_usage,
-        system_swap_total,
-    ) = {
-        let mut guard = SYSTEM.lock().await;
-        guard.refresh_cpu_usage();
-        guard.refresh_memory();
-
-        (
-            guard.global_cpu_usage(),
-            guard.used_memory(),
-            guard.total_memory(),
-            guard.used_swap(),
-            guard.total_memory(),
-        )
-    };
-
     // TODO Mapfeed health check
     let description = format!(
         "**Mapfeed health:** {}\n**Uptime:** {}",
@@ -98,31 +47,17 @@ pub async fn status(ctx: DiscordContext<'_>) -> Result<(), Error> {
         ctx.data().uptime()
     );
 
-    let fields = vec![
-        (
-            "Ping",
-            format!(
-                "**Shard Latency:** `{}ms`\n\
+    let fields = vec![(
+        "Ping",
+        format!(
+            "**Shard Latency:** `{}ms`\n\
                              The time it takes for Discord to ping the shard.\n\
                              **Response/API Latency:** `{}ms`\n\
                              The time it takes for me to ping Discord.",
-                shard_latency, bot_latency
-            ),
-            false,
+            shard_latency, bot_latency
         ),
-        (
-            "System",
-            format!(
-                "CPU usage: `{:.2}%`\nRAM usage: `{} / {}`\nSwap usage: `{} / {}`",
-                system_cpu_usage,
-                format_bytes(system_ram_usage),
-                format_bytes(system_ram_total),
-                format_bytes(system_swap_usage),
-                format_bytes(system_swap_total)
-            ),
-            false,
-        ),
-    ];
+        false,
+    )];
 
     let builder = CreateReply::default().content("").embed(
         CreateEmbed::default()

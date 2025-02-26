@@ -1,7 +1,6 @@
-use crate::context::Context;
-use crate::{DiscordContext, Error};
-use log::error;
+use crate::{DiscordContext, Error, context::Context};
 use poise::CreateReply;
+use tracing::error;
 
 #[poise::command(prefix_command)]
 pub async fn cat(ctx: DiscordContext<'_>, count: Option<i32>) -> Result<(), Error> {

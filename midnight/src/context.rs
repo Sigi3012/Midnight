@@ -2,7 +2,7 @@ use crate::config::BotConfiguration;
 use anyhow::{Result, bail};
 use midnight_api::{Fun, Osu};
 use midnight_database::core::Database;
-use serenity::all::{Cache, CacheHttp, Http, ShardMessenger};
+use poise::serenity_prelude::all::{Cache, CacheHttp, Http, ShardMessenger};
 use std::sync::{Arc, OnceLock};
 use tokio::time::Instant;
 
@@ -28,7 +28,8 @@ pub struct DiscordContextWrapper {
 }
 
 impl Context {
-    pub async fn init(config: &BotConfiguration, discord_ctx: DiscordContextWrapper) -> Result<()> {
+    #[allow(clippy::new_ret_no_self)]
+    pub async fn new(config: &BotConfiguration, discord_ctx: DiscordContextWrapper) -> Result<()> {
         let reqwest_client = reqwest::Client::new();
         let osu = Osu::new(
             config.tokens.osu_client_id,

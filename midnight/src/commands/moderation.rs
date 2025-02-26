@@ -1,5 +1,4 @@
-use crate::features::music;
-use crate::{DiscordContext, Error, context::Context};
+use crate::{DiscordContext, Error, context::Context, features::music};
 use midnight_database::subscriptions::{
     ChannelType, SubscriptionMode, channel_subscription_handler,
 };

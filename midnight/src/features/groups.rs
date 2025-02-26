@@ -14,7 +14,7 @@ use midnight_model::{
 use midnight_util::constants::{
     ERROR_BACKOFF_COOLDOWN, GREEN, GROUP_LOOP_DURATION, RED, TRACKED_OSU_GROUPS, YELLOW,
 };
-use serenity::{
+use poise::serenity_prelude::{
     builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateMessage},
     model::{Timestamp, id::ChannelId},
 };
@@ -124,7 +124,8 @@ async fn update_group(group: OsuGroup) -> Result<()> {
 }
 
 async fn process(diff: &Diff, group: OsuGroup) -> Result<Vec<CreateEmbed>> {
-    let mut embeds: Vec<CreateEmbed> = Vec::new();
+    let mut embeds: Vec<CreateEmbed> = Vec::with_capacity(diff.added.len() + diff.removed.len());
+
     for user in &diff.added {
         let mut description = String::new();
         if let Some(gamemodes_iter) = user
@@ -154,7 +155,6 @@ async fn process(diff: &Diff, group: OsuGroup) -> Result<Vec<CreateEmbed>> {
                 .timestamp(Timestamp::now()),
         )
     }
-
     for user in &diff.removed {
         embeds.push(
             CreateEmbed::default()

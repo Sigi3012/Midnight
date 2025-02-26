@@ -1,15 +1,14 @@
 use crate::context::Context;
 use fancy_regex::Regex;
-use lazy_static::lazy_static;
-use log::{error, info, warn};
 use midnight_database::subscriptions::{
     ChannelType, SubscriptionMode, fetch_all_subscribed_channels,
 };
-use serenity::all::Message;
+use poise::serenity_prelude::all::Message;
 use std::{
     collections::HashSet,
     io::{self, Read},
     process::{Command, Stdio},
+    sync::LazyLock,
 };
 use thiserror::Error;
 use tokio::{
@@ -17,17 +16,16 @@ use tokio::{
     task::{self, JoinError},
     time::{self, Duration, error::Elapsed},
 };
+use tracing::{error, info, warn};
 
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(7);
 
-lazy_static! {
-    static ref REGEX: Regex = Regex::new(
-        r#"https?:\/\/(?:youtu\.be|(?:www\.|music\.)?youtube\.com)\/(?:watch\?v=)?([\w-]+)"#
-    )
-    .expect("Regex should compile");
-    pub static ref CHANNEL_CACHE: ChannelCache = ChannelCache::new();
-}
+static REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"https?:\/\/(?:youtu\.be|(?:www\.|music\.)?youtube\.com)\/(?:watch\?v=)?([\w-]+)"#)
+        .expect("Regex should compile")
+});
+pub(crate) static CHANNEL_CACHE: LazyLock<ChannelCache> = LazyLock::new(ChannelCache::new);
 
 #[derive(Debug, Error)]
 pub enum DownloadError {
@@ -44,7 +42,6 @@ pub enum DownloadError {
     DownloadTimeout(#[from] Elapsed),
 }
 
-#[derive(Default)]
 pub struct ChannelCache {
     initialized: OnceCell<()>,
     channels: Mutex<HashSet<i64>>,

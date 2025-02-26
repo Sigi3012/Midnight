@@ -1,13 +1,12 @@
 use crate::context::Context;
 use anyhow::{Result, bail};
-use log::{debug, trace, warn};
 use midnight_database::sticky::{self, untrack_message};
 use poise::serenity_prelude::{Message, MessageType};
 use smallvec::SmallVec;
+use tracing::{debug, trace, warn};
 
 pub async fn sticky_message_handler(message: &Message) -> Result<()> {
     let ctx = Context::discord_ctx();
-    let mut conn = Context::database().get_conn().await;
 
     if message.kind != MessageType::PinsAdd {
         return Ok(());
@@ -24,6 +23,7 @@ pub async fn sticky_message_handler(message: &Message) -> Result<()> {
     };
     let channel_id = ref_message.channel_id;
 
+    let mut conn = Context::database().get_conn().await;
     match sticky::check_channel(&mut conn, ref_message.channel_id.get() as i64).await {
         Ok(v) if v.is_empty() => Ok(()),
         Ok(tracked) => {
