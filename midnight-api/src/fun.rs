@@ -99,6 +99,6 @@ impl Fun {
 
 // Because thread_rng uses well, threads, we have this function to call .await on
 async fn generate_number(range: std::ops::Range<i16>) -> i16 {
-    let mut rng = rand::thread_rng();
-    rng.gen_range(range)
+    let mut rng = rand::rng();
+    rng.random_range(range)
 }
